@@ -177,6 +177,60 @@ class MikrotikNativeService implements MikrotikService {
         .toList();
   }
 
+  /// Add new PPP Profile to Mikrotik using Native API
+  @override
+  Future<Map<String, dynamic>> addPPPProfile(Map<String, String> data) async {
+    await _ensureConnected();
+
+    List<String> cmd = ['/ppp/profile/add'];
+    data.forEach((key, value) {
+      cmd.add('=$key=$value');
+    });
+
+    final response = await _client!.talk(cmd);
+    _checkForError(response);
+
+    return {
+      'success': true,
+      'message': 'Profile berhasil ditambahkan',
+    };
+  }
+
+  /// Update existing PPP Profile in Mikrotik using Native API
+  @override
+  Future<Map<String, dynamic>> updatePPPProfile(
+      String profileId, Map<String, String> data) async {
+    await _ensureConnected();
+
+    List<String> cmd = ['/ppp/profile/set', '=.id=$profileId'];
+    data.forEach((key, value) {
+      cmd.add('=$key=$value');
+    });
+
+    final response = await _client!.talk(cmd);
+    _checkForError(response);
+
+    return {
+      'success': true,
+      'message': 'Profile berhasil diperbarui',
+    };
+  }
+
+  /// Delete PPP Profile from Mikrotik using Native API
+  @override
+  Future<Map<String, dynamic>> deletePPPProfile(String profileId) async {
+    await _ensureConnected();
+
+    final response =
+        await _client!.talk(['/ppp/profile/remove', '=.id=$profileId']);
+    _checkForError(response);
+
+    return {
+      'success': true,
+      'message': 'Profile berhasil dihapus',
+    };
+  }
+
   Future<void> addPPPSecret(Map<String, String> data) async {
     await _ensureConnected();
 
@@ -194,7 +248,9 @@ class MikrotikNativeService implements MikrotikService {
     _checkForError(response);
   }
 
-  Future<void> updatePPPSecret(String name, Map<String, String> data) async {
+  @override
+  Future<Map<String, dynamic>> updatePPPSecret(
+      String name, Map<String, String> data) async {
     await _ensureConnected();
 
     // Cari ID dulu berdasarkan nama
@@ -217,6 +273,31 @@ class MikrotikNativeService implements MikrotikService {
 
     final response = await _client!.talk(cmd);
     _checkForError(response);
+
+    // Success - now try to disconnect if user is active
+    Map<String, dynamic> disconnectResult = {};
+
+    try {
+      // Disconnect using OLD username (before change)
+      disconnectResult = await disconnectUserIfActive(name);
+    } catch (e) {
+      // Ignore disconnect errors - update was successful
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[UPDATE-NATIVE] Disconnect failed but update succeeded: $e');
+      }
+    }
+
+    final wasDisconnected = disconnectResult['disconnected'] ?? false;
+
+    return {
+      'success': true,
+      'disconnected': wasDisconnected,
+      'disconnectDetails': disconnectResult,
+      'message': wasDisconnected
+          ? 'User berhasil diperbarui dan koneksi aktif telah diputus'
+          : 'User berhasil diperbarui',
+    };
   }
 
   Future<void> deletePPPSecret(String id) async {
@@ -230,6 +311,102 @@ class MikrotikNativeService implements MikrotikService {
     final response =
         await _client!.talk(['/ppp/active/remove', '=.id=$sessionId']);
     _checkForError(response);
+  }
+
+  /// Disconnect user if currently active
+  /// Returns Map with disconnect status and details
+  /// Silent fail - tidak throw exception jika gagal
+  @override
+  Future<Map<String, dynamic>> disconnectUserIfActive(String username) async {
+    try {
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DISCONNECT-NATIVE] ========================================');
+        // ignore: avoid_print
+        print('[DISCONNECT-NATIVE] Checking if user "$username" is active...');
+      }
+
+      // Get active connections
+      final activeConnections = await getPPPActive();
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print(
+            '[DISCONNECT-NATIVE] Found ${activeConnections.length} active connections');
+      }
+
+      // Find user in active connections (case-insensitive)
+      final userConnection = activeConnections.firstWhere(
+        (conn) =>
+            conn['name']?.toString().toLowerCase() == username.toLowerCase(),
+        orElse: () => {},
+      );
+
+      // If user is active, disconnect
+      if (userConnection.isNotEmpty && userConnection['.id'] != null) {
+        final sessionId = userConnection['.id'].toString();
+        final address = userConnection['address']?.toString() ?? 'N/A';
+        final uptime = userConnection['uptime']?.toString() ?? 'N/A';
+
+        if (enableLogging) {
+          // ignore: avoid_print
+          print('[DISCONNECT-NATIVE] ✓ User found in active connections');
+          // ignore: avoid_print
+          print('[DISCONNECT-NATIVE]   - Session ID: $sessionId');
+          // ignore: avoid_print
+          print('[DISCONNECT-NATIVE]   - Address: $address');
+          // ignore: avoid_print
+          print('[DISCONNECT-NATIVE]   - Uptime: $uptime');
+          // ignore: avoid_print
+          print('[DISCONNECT-NATIVE] Disconnecting session...');
+        }
+
+        await disconnectSession(sessionId);
+
+        if (enableLogging) {
+          // ignore: avoid_print
+          print(
+              '[DISCONNECT-NATIVE] ✓✓✓ User "$username" disconnected successfully!');
+          // ignore: avoid_print
+          print('[DISCONNECT-NATIVE] ========================================');
+        }
+
+        return {
+          'disconnected': true,
+          'sessionId': sessionId,
+          'address': address,
+          'uptime': uptime,
+        };
+      }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DISCONNECT-NATIVE] ✗ User "$username" is NOT active');
+        // ignore: avoid_print
+        print('[DISCONNECT-NATIVE] ========================================');
+      }
+
+      return {
+        'disconnected': false,
+        'reason': 'User not found in active connections',
+      };
+    } catch (e) {
+      // Silent fail - jangan throw exception
+      // Karena disconnect adalah optional, update secret tetap berhasil
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DISCONNECT-NATIVE] ✗✗✗ FAILED to disconnect user "$username"');
+        // ignore: avoid_print
+        print('[DISCONNECT-NATIVE] Error: $e');
+        // ignore: avoid_print
+        print('[DISCONNECT-NATIVE] ========================================');
+      }
+
+      return {
+        'disconnected': false,
+        'error': e.toString(),
+      };
+    }
   }
 
   Future<Map<String, dynamic>> getTraffic(String interfaceId) async {
@@ -312,40 +489,66 @@ class MikrotikNativeService implements MikrotikService {
 
   // Fallback method
   Future<String> getRouterSerialOrId() async {
+    print('[ROUTER-ID-NATIVE] ========================================');
+    print('[ROUTER-ID-NATIVE] Starting router ID detection (Native API)...');
+    print('[ROUTER-ID-NATIVE] IP: $ip, Port: $port');
+
     // Pastikan koneksi siap
     try {
       await _ensureConnected();
-    } catch (_) {}
+      print('[ROUTER-ID-NATIVE] ✓ Connection established');
+    } catch (e) {
+      print('[ROUTER-ID-NATIVE] ✗ Connection failed: $e');
+    }
 
     // 1. Cek /system/license (Prioritas Utama)
     try {
+      print(
+          '[ROUTER-ID-NATIVE] Attempting to get license from /system/license...');
       final lic = await _client!.talk(['/system/license/print']);
-      print('[NATIVE-SVC] License response: $lic');
+      print('[ROUTER-ID-NATIVE] License response: $lic');
+
       final data = lic.firstWhere(
           (i) => !i.containsKey('!done') && !i.containsKey('!trap'),
           orElse: () => {});
 
+      print('[ROUTER-ID-NATIVE] Parsed license data: $data');
+
       final serial = data['serial-number'];
+      print('[ROUTER-ID-NATIVE] serial-number: ${serial ?? "null"}');
       if (serial != null && serial.toString().isNotEmpty) {
+        print('[ROUTER-ID-NATIVE] ✓✓✓ SUCCESS! Using serial-number: $serial');
+        print('[ROUTER-ID-NATIVE] ========================================');
         return serial.toString();
       }
 
       final softwareId = data['software-id'];
+      print('[ROUTER-ID-NATIVE] software-id: ${softwareId ?? "null"}');
       if (softwareId != null && softwareId.toString().isNotEmpty) {
+        print('[ROUTER-ID-NATIVE] ✓✓✓ SUCCESS! Using software-id: $softwareId');
+        print('[ROUTER-ID-NATIVE] ========================================');
         return softwareId.toString();
       }
+
+      print(
+          '[ROUTER-ID-NATIVE] ✗ No serial-number or software-id found in license');
+      print('[ROUTER-ID-NATIVE] Available keys: ${data.keys.toList()}');
     } catch (e) {
-      print('[NATIVE-SVC] Error fetching license: $e');
+      print('[ROUTER-ID-NATIVE] ✗✗✗ FAILED to get license!');
+      print('[ROUTER-ID-NATIVE] Error type: ${e.runtimeType}');
+      print('[ROUTER-ID-NATIVE] Error message: $e');
     }
 
     // 2. Cek /system/resource (Fallback jika license gagal)
     try {
+      print('[ROUTER-ID-NATIVE] Attempting to get resource info...');
       final res = await getResource();
-      print('[NATIVE-SVC] Resource response: $res');
+      print('[ROUTER-ID-NATIVE] Resource response: $res');
 
       // Beberapa router menyimpan serial di resource
       // Atau kita bisa pakai board-name sebagai bagian dari ID jika serial tidak ada
       if (res['board-name'] != null) {
+        print('[ROUTER-ID-NATIVE] Found board-name: ${res['board-name']}');
         // Jika ada serial di resource, pakai itu
         // Note: key serial di resource mungkin berbeda tergantung versi, tapi biasanya tidak ada.
         // Namun kita bisa return board-name sebagai identitas yang lebih baik daripada "RouterOS"
@@ -355,13 +558,15 @@ class MikrotikNativeService implements MikrotikService {
         // return 'RB-${res['board-name']}@$ip:$port';
       }
     } catch (e) {
-      print('[NATIVE-SVC] Error fetching resource: $e');
+      print('[ROUTER-ID-NATIVE] ✗ Error fetching resource: $e');
     }
 
     // 3. Fallback: Identity + IP
     try {
+      print('[ROUTER-ID-NATIVE] ⚠ Falling back to identity + IP:port...');
       final id = await getIdentity();
       final name = id['name']?.toString() ?? 'UNKNOWN';
+      print('[ROUTER-ID-NATIVE] Identity name: $name');
 
       // Jika nama masih default "RouterOS", coba ambil board-name dari resource lagi untuk mempercantik
       if (name == 'RouterOS') {
@@ -369,14 +574,33 @@ class MikrotikNativeService implements MikrotikService {
           final res = await getResource();
           final boardName = res['board-name']?.toString();
           if (boardName != null && boardName.isNotEmpty) {
-            return 'RB-$boardName@$ip:$port';
+            final fallbackId = 'RB-$boardName@$ip:$port';
+            print(
+                '[ROUTER-ID-NATIVE] ⚠⚠⚠ WARNING! Using fallback ID (with board-name): $fallbackId');
+            print(
+                '[ROUTER-ID-NATIVE] This will cause duplicate entries if IP/port changes!');
+            print(
+                '[ROUTER-ID-NATIVE] ========================================');
+            return fallbackId;
           }
-        } catch (_) {}
+        } catch (e) {
+          print('[ROUTER-ID-NATIVE] Could not get board-name: $e');
+        }
       }
 
-      return 'RB-$name@$ip:$port';
-    } catch (_) {
-      return '$ip:$port';
+      final fallbackId = 'RB-$name@$ip:$port';
+      print('[ROUTER-ID-NATIVE] ⚠⚠⚠ WARNING! Using fallback ID: $fallbackId');
+      print(
+          '[ROUTER-ID-NATIVE] This will cause duplicate entries if IP/port changes!');
+      print('[ROUTER-ID-NATIVE] ========================================');
+      return fallbackId;
+    } catch (e) {
+      print('[ROUTER-ID-NATIVE] ✗✗✗ CRITICAL! Even identity fetch failed!');
+      print('[ROUTER-ID-NATIVE] Error: $e');
+      final lastResort = '$ip:$port';
+      print('[ROUTER-ID-NATIVE] Using last resort ID: $lastResort');
+      print('[ROUTER-ID-NATIVE] ========================================');
+      return lastResort;
     }
   }
 

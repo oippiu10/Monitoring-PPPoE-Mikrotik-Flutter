@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Mikrotik PPPoE Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--bg-primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Animated Background */
+        .bg-blobs {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.12;
+            animation: blobFloat 8s ease-in-out infinite;
+        }
+        .blob-1 { width: 500px; height: 500px; background: var(--primary); top: -200px; left: -100px; animation-delay: 0s; }
+        .blob-2 { width: 400px; height: 400px; background: var(--purple); bottom: -150px; right: -50px; animation-delay: 3s; }
+        .blob-3 { width: 300px; height: 300px; background: var(--success); top: 50%; left: 60%; animation-delay: 1.5s; }
+
+        @keyframes blobFloat {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(20px, -20px) scale(1.05); }
+        }
+
+        /* Grid dots background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+            background-size: 30px 30px;
+            z-index: 0;
+        }
+
+        /* Login Container */
+        .login-wrapper {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 420px;
+            padding: 24px;
+        }
+
+        .login-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 36px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+        }
+
+        /* Header */
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .login-logo {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--purple));
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 26px;
+            color: white;
+            box-shadow: 0 8px 24px rgba(79,142,247,0.3);
+        }
+
+        .login-header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .login-header p {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Form */
+        .login-form .form-group { margin-bottom: 16px; }
+
+        .login-form .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i.input-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .input-wrapper .form-control { padding-left: 38px; }
+
+        .toggle-pw-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            background: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            font-size: 14px;
+            transition: var(--transition);
+        }
+        .toggle-pw-btn:hover { color: var(--text-primary); }
+
+        /* Options */
+        .form-options {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .remember-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .remember-label input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--primary);
+        }
+
+        .forgot-link {
+            font-size: 12px;
+            color: var(--primary);
+            text-decoration: none;
+        }
+        .forgot-link:hover { text-decoration: underline; }
+
+        /* Submit Button */
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: inherit;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-login::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+            transform: translateX(-100%);
+            transition: transform 0.4s ease;
+        }
+
+        .btn-login:hover::before { transform: translateX(100%); }
+        .btn-login:hover { background: var(--primary-dark); box-shadow: 0 0 24px rgba(79,142,247,0.4); }
+        .btn-login:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* Demo Button */
+        .btn-demo {
+            width: 100%;
+            padding: 11px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: inherit;
+        }
+        .btn-demo:hover {
+            background: var(--purple-glow);
+            border-color: var(--purple);
+            color: var(--purple);
+        }
+
+
+        /* Alert */
+        .login-alert {
+            padding: 10px 14px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .login-alert.error { background: var(--danger-glow); color: var(--danger); border: 1px solid rgba(239,68,68,0.2); }
+        .login-alert.success { background: var(--success-glow); color: var(--success); border: 1px solid rgba(34,197,94,0.2); }
+        .login-alert.show { display: flex; }
+
+        /* Info Box */
+        .login-info {
+            margin-top: 24px;
+            padding: 14px 16px;
+            background: var(--primary-glow);
+            border: 1px solid rgba(79,142,247,0.2);
+            border-radius: var(--radius-md);
+        }
+
+        .login-info p {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .login-info p:last-child { margin-bottom: 0; }
+
+        .cred-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        .cred-item span:first-child { color: var(--text-muted); }
+        .cred-item code {
+            background: var(--bg-card);
+            color: var(--primary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        /* Footer */
+        .login-footer {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <!-- Background -->
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <!-- Login -->
+    <div class="login-wrapper">
+        <div class="login-box">
+            <!-- Header -->
+            <div class="login-header">
+                <div class="login-logo">
+                    <i class="fas fa-network-wired"></i>
+                </div>
+                <h1>PPPoE Monitor</h1>
+                <p>Web Admin Panel — Masuk ke akun Anda</p>
+            </div>
+
+            <!-- Alert -->
+            <div class="login-alert" id="loginAlert">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="alertMessage"></span>
+            </div>
+
+            <!-- Form -->
+            <form id="loginForm" class="login-form" autocomplete="on">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-user input-icon"></i>
+                        <input type="text" id="username" name="username" class="form-control"
+                               placeholder="Masukkan username" required autocomplete="username">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-lock input-icon"></i>
+                        <input type="password" id="password" name="password" class="form-control"
+                               placeholder="Masukkan password" required autocomplete="current-password">
+                        <button type="button" class="toggle-pw-btn" id="togglePw" onclick="togglePassword()">
+                            <i class="fas fa-eye" id="togglePwIcon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-options">
+                    <label class="remember-label">
+                        <input type="checkbox" id="remember" name="remember">
+                        <span>Ingat Saya</span>
+                    </label>
+                    <a href="#" class="forgot-link">Lupa Password?</a>
+                </div>
+
+                <button type="submit" class="btn-login" id="loginBtn">
+                    <i class="fas fa-sign-in-alt" id="loginBtnIcon"></i>
+                    <span id="loginBtnText">Masuk</span>
+                </button>
+
+                <!-- Divider -->
+                <div style="display:flex;align-items:center;gap:12px;margin:16px 0">
+                    <div style="flex:1;height:1px;background:var(--border)"></div>
+                    <span style="font-size:12px;color:var(--text-muted)">atau</span>
+                    <div style="flex:1;height:1px;background:var(--border)"></div>
+                </div>
+
+                <!-- Demo Mode Button -->
+                <button type="button" class="btn-demo" onclick="loginDemo()">
+                    <i class="fas fa-rocket"></i>
+                    Masuk Mode Demo (Tanpa PHP Server)
+                </button>
+            </form>
+
+            <!-- Info Kredensial Default -->
+            <div class="login-info">
+                <p><i class="fas fa-info-circle"></i>&nbsp; <strong>Info Login Default (perlu PHP server):</strong></p>
+                <div class="cred-item">
+                    <span>Username</span>
+                    <code>admin</code>
+                </div>
+                <div class="cred-item" style="margin-top: 6px;">
+                    <span>Password</span>
+                    <code>admin123</code>
+                </div>
+                <p style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+                    🖥️ Jika buka via <strong>Live Server</strong>: gunakan tombol <strong>Demo</strong> di atas.<br>
+                    🐘 Jika via <strong>XAMPP/Laragon</strong>: login bisa dengan admin/admin123.
+                </p>
+            </div>
+        </div>
+
+        <div class="login-footer">
+            &copy; 2026 CMM Network — Mikrotik PPPoE Monitor v1.0.9
+        </div>
+    </div>
+
+    <script>
+        function togglePassword() {
+            const pw = document.getElementById('password');
+            const icon = document.getElementById('togglePwIcon');
+            if (pw.type === 'password') {
+                pw.type = 'text';
+                icon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                pw.type = 'password';
+                icon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        }
+
+        function showAlert(message, type = 'error') {
+            const alert = document.getElementById('loginAlert');
+            const msg = document.getElementById('alertMessage');
+            msg.textContent = message;
+            alert.className = `login-alert ${type} show`;
+        }
+
+        function hideAlert() {
+            document.getElementById('loginAlert').className = 'login-alert';
+        }
+
+        function setLoading(loading) {
+            const btn = document.getElementById('loginBtn');
+            const icon = document.getElementById('loginBtnIcon');
+            const text = document.getElementById('loginBtnText');
+            if (loading) {
+                btn.disabled = true;
+                icon.className = 'fas fa-spinner fa-spin';
+                text.textContent = 'Memproses...';
+            } else {
+                btn.disabled = false;
+                icon.className = 'fas fa-sign-in-alt';
+                text.textContent = 'Masuk';
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            hideAlert();
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const remember = document.getElementById('remember').checked;
+
+            if (!username || !password) {
+                showAlert('Username dan password harus diisi');
+                return;
+            }
+
+            setLoading(true);
+
+            try {
+                const response = await fetch('api/auth/login.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, remember })
+                });
+
+                // Cek apakah response adalah JSON (PHP jalan)
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('NOT_PHP');
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    sessionStorage.setItem('logged_in', '1');
+                    sessionStorage.setItem('userInfo', JSON.stringify(data.data));
+                    showAlert('Login berhasil! Mengalihkan...', 'success');
+                    setTimeout(() => { window.location.href = 'dashboard.html'; }, 800);
+                } else {
+                    showAlert(data.message || 'Login gagal. Periksa username dan password.');
+                }
+            } catch (err) {
+                console.error('Login error:', err);
+                if (err.message === 'NOT_PHP' || err.name === 'TypeError') {
+                    // Server PHP tidak aktif - tampilkan saran Demo Mode
+                    showAlert('Server PHP tidak aktif. Gunakan tombol "Masuk Mode Demo" di bawah, atau buka via XAMPP/Laragon.');
+                } else {
+                    showAlert('Login gagal: ' + (err.message || 'Terjadi kesalahan'));
+                }
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        // ===================================
+        // DEMO MODE — Bypass PHP Login
+        // ===================================
+        function loginDemo() {
+            // Set demo user info ke sessionStorage
+            const demoUser = {
+                username: 'admin',
+                full_name: 'Administrator (Demo)',
+                role: 'admin',
+                demo: true
+            };
+            sessionStorage.setItem('logged_in', '1');
+            sessionStorage.setItem('userInfo', JSON.stringify(demoUser));
+
+            showAlert('Masuk mode demo... Mengalihkan ke dashboard!', 'success');
+            setTimeout(() => {
+                window.location.href = 'dashboard.html';
+            }, 800);
+        }
+
+        // Enter key submit
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.activeElement.tagName !== 'BUTTON') {
+                document.getElementById('loginForm').requestSubmit();
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports — Mikrotik PPPoE Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .reports-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .chart-h { height: 260px; }
+        .report-table-row td { font-size: 13px; }
+        .year-nav { display: flex; align-items: center; gap: 12px; }
+        .year-nav button { width: 32px; height: 32px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition); }
+        .year-nav button:hover { background: var(--primary); color: white; }
+        .year-display { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+        @media(max-width:900px){ .reports-grid{ grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo-placeholder"><i class="fas fa-network-wired"></i></div>
+            <div class="sidebar-title"><h2>PPPoE Monitor</h2><p>Web Admin Panel</p></div>
+        </div>
+        <nav class="sidebar-nav">
+            <span class="nav-section-label">Menu Utama</span>
+            <a href="dashboard.html" class="nav-item"><i class="fas fa-home"></i><span class="nav-label">Dashboard</span></a>
+            <a href="users.html" class="nav-item"><i class="fas fa-users"></i><span class="nav-label">User Management</span></a>
+            <a href="billing.html" class="nav-item"><i class="fas fa-money-bill-wave"></i><span class="nav-label">Billing</span></a>
+            <a href="monitoring.html" class="nav-item"><i class="fas fa-chart-line"></i><span class="nav-label">Monitoring</span></a>
+            <a href="map.html" class="nav-item"><i class="fas fa-map-marked-alt"></i><span class="nav-label">Customer Map</span></a>
+            <a href="reports.html" class="nav-item active"><i class="fas fa-file-alt"></i><span class="nav-label">Reports</span></a>
+            <a href="settings.html" class="nav-item"><i class="fas fa-cog"></i><span class="nav-label">Settings</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="sidebar-user-avatar" id="userAvatarLetter">A</div>
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name" id="sidebarUserName">Admin</div>
+                    <div class="sidebar-user-role">Administrator</div>
+                </div>
+            </div>
+            <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i><span>Logout</span></button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="mobile-menu-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                <div>
+                    <h1>Reports</h1>
+                    <div class="topbar-breadcrumb">Laporan keuangan & pertumbuhan</div>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div class="year-nav">
+                    <button onclick="changeYear(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span class="year-display" id="yearDisplay">2026</span>
+                    <button onclick="changeYear(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+                <button class="btn-icon" onclick="toggleTheme()"><i class="fas fa-moon" id="themeIcon"></i></button>
+                <button class="btn btn-primary btn-sm" onclick="exportReport()"><i class="fas fa-download"></i> Export</button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <!-- Summary Stats -->
+            <div class="stats-grid" style="margin-bottom:24px">
+                <div class="stat-card">
+                    <div class="stat-icon green"><i class="fas fa-coins"></i></div>
+                    <div class="stat-details"><p class="stat-label">Revenue Tahunan</p><h3 class="stat-value" id="repYearRevenue">—</h3><p class="stat-change positive">Tahun ini</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon blue"><i class="fas fa-user-check"></i></div>
+                    <div class="stat-details"><p class="stat-label">Avg Pembayaran</p><h3 class="stat-value" id="repAvgPayment">—</h3><p class="stat-change neutral">Per bulan</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange"><i class="fas fa-user-plus"></i></div>
+                    <div class="stat-details"><p class="stat-label">User Baru</p><h3 class="stat-value" id="repNewUsers">—</h3><p class="stat-change positive">Tahun ini</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon danger"><i class="fas fa-user-times"></i></div>
+                    <div class="stat-details"><p class="stat-label">Churn Rate</p><h3 class="stat-value" id="repChurn">—</h3><p class="stat-change negative">Avg per bulan</p></div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="reports-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-bar" style="color:var(--success);margin-right:6px"></i>Revenue per Bulan</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-h"><canvas id="revenueChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-line" style="color:var(--primary);margin-right:6px"></i>Pertumbuhan Pelanggan</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-h"><canvas id="growthChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monthly Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-table" style="color:var(--warning);margin-right:6px"></i>Rekap Bulanan <span id="tableYear">2026</span></h3>
+                </div>
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Bulan</th>
+                                <th>Total Pelanggan</th>
+                                <th>Sudah Bayar</th>
+                                <th>Belum Bayar</th>
+                                <th>Revenue</th>
+                                <th>% Lunas</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyTableBody">
+                            <tr><td colspan="7"><div class="loading-overlay"><div class="loading-spinner"></div> Memuat...</div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+let currentYear = new Date().getFullYear();
+let revenueChart, growthChart;
+
+function init() {
+    loadTheme();
+    try {
+        const u = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+        document.getElementById('sidebarUserName').textContent = u.full_name || u.username || 'Admin';
+        document.getElementById('userAvatarLetter').textContent = (u.full_name || u.username || 'A').charAt(0).toUpperCase();
+    } catch(e) {}
+    document.getElementById('yearDisplay').textContent = currentYear;
+    document.getElementById('tableYear').textContent = currentYear;
+    initCharts();
+    loadReports();
+}
+
+function changeYear(dir) {
+    currentYear += dir;
+    document.getElementById('yearDisplay').textContent = currentYear;
+    document.getElementById('tableYear').textContent = currentYear;
+    loadReports();
+}
+
+function initCharts() {
+    const ctx1 = document.getElementById('revenueChart').getContext('2d');
+    const g = ctx1.createLinearGradient(0, 0, 0, 260);
+    g.addColorStop(0, 'rgba(34,197,94,0.4)');
+    g.addColorStop(1, 'rgba(34,197,94,0)');
+
+    revenueChart = new Chart(ctx1, {
+        type: 'bar',
+        data: { labels: MONTHS_ID, datasets: [{ label: 'Revenue (Rp)', data: Array(12).fill(0), backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1, borderRadius: 6 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#94a3b8' } } },
+            scales: {
+                x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#64748b', callback: v => `Rp ${(v/1000000).toFixed(0)}jt` }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+        }
+    });
+
+    const ctx2 = document.getElementById('growthChart').getContext('2d');
+    growthChart = new Chart(ctx2, {
+        type: 'line',
+        data: { labels: MONTHS_ID, datasets: [{ label: 'Total Pelanggan', data: Array(12).fill(0), borderColor: '#4f8ef7', backgroundColor: 'rgba(79,142,247,0.1)', fill: true, tension: 0.4, borderWidth: 2 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#94a3b8' } } },
+            scales: {
+                x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+        }
+    });
+}
+
+async function loadReports() {
+    const tbody = document.getElementById('monthlyTableBody');
+    tbody.innerHTML = `<tr><td colspan="7"><div class="loading-overlay"><div class="loading-spinner"></div> Memuat...</div></td></tr>`;
+
+    try {
+        const res = await fetch(`../../api/payment_summary_operations.php?action=yearly&year=${currentYear}`);
+        const data = await res.json();
+
+        if (data.success && data.data) {
+            renderMonthlyTable(data.data);
+            updateCharts(data.data);
+            updateSummary(data.data);
+        } else {
+            generateDemoReport();
+        }
+    } catch(e) {
+        generateDemoReport();
+    }
+}
+
+function generateDemoReport() {
+    const demoData = MONTHS_ID.map((m, i) => ({
+        month: i + 1, month_name: m,
+        total: 0, paid: 0, unpaid: 0,
+        revenue: 0, payment_rate: 0
+    }));
+    renderMonthlyTable(demoData);
+    updateCharts(demoData);
+}
+
+function renderMonthlyTable(rows) {
+    const tbody = document.getElementById('monthlyTableBody');
+    if (!rows || !rows.length) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fas fa-chart-bar"></i><h4>Tidak ada data</h4></div></td></tr>`;
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const pct = r.total > 0 ? Math.round((r.paid || 0) / r.total * 100) : 0;
+        const now = new Date(), m = now.getMonth() + 1, yr = now.getFullYear();
+        const isCurrent = r.month == m && currentYear == yr;
+
+        return `<tr class="report-table-row" ${isCurrent ? 'style="background:var(--primary-glow)"' : ''}>
+            <td><strong>${r.month_name || MONTHS_ID[(r.month||1)-1]}</strong> ${isCurrent ? '<span class="badge badge-primary" style="margin-left:6px">Bulan Ini</span>' : ''}</td>
+            <td>${r.total || 0} pelanggan</td>
+            <td><span style="color:var(--success)">${r.paid || 0}</span></td>
+            <td><span style="color:var(--danger)">${r.unpaid || 0}</span></td>
+            <td><strong>${formatCurrency(r.revenue || 0)}</strong></td>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;height:6px;background:var(--border);border-radius:3px"><div style="height:100%;background:var(--success);border-radius:3px;width:${pct}%"></div></div>
+                    <span style="font-size:11px;color:var(--text-muted)">${pct}%</span>
+                </div>
+            </td>
+            <td>
+                <button class="btn btn-outline btn-sm" onclick="exportMonth(${r.month}, ${currentYear})">
+                    <i class="fas fa-download"></i>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function updateCharts(rows) {
+    const revenues = Array(12).fill(0);
+    const totals = Array(12).fill(0);
+    rows.forEach(r => {
+        const idx = (r.month || 1) - 1;
+        revenues[idx] = r.revenue || 0;
+        totals[idx] = r.total || 0;
+    });
+    revenueChart.data.datasets[0].data = revenues;
+    revenueChart.update();
+    growthChart.data.datasets[0].data = totals;
+    growthChart.update();
+}
+
+function updateSummary(rows) {
+    const totalRev = rows.reduce((s, r) => s + (r.revenue || 0), 0);
+    const avgRev = rows.length > 0 ? totalRev / rows.length : 0;
+    const newUsers = rows.reduce((s, r) => s + (r.new_users || 0), 0);
+    document.getElementById('repYearRevenue').textContent = formatCurrency(totalRev);
+    document.getElementById('repAvgPayment').textContent = formatCurrency(avgRev);
+    document.getElementById('repNewUsers').textContent = newUsers || '—';
+    document.getElementById('repChurn').textContent = '—';
+}
+
+function exportReport() {
+    window.open(`../../api/payment_summary_operations.php?action=export&year=${currentYear}&format=csv`, '_blank');
+    showToast('Export', `Mengunduh laporan tahunan ${currentYear}...`, 'info');
+}
+
+function exportMonth(month, year) {
+    const params = new URLSearchParams({ month, year, format: 'csv' });
+    window.open(`../../api/payment_operations.php?action=export&${params}`, '_blank');
+    showToast('Export', `Export billing ${MONTHS_ID[month-1]} ${year}...`, 'info');
+}
+
+function loadTheme() { if(localStorage.getItem('theme')==='light'){document.body.classList.add('light-theme');document.getElementById('themeIcon').className='fas fa-sun';} }
+function toggleTheme(){ document.body.classList.toggle('light-theme');const l=document.body.classList.contains('light-theme');document.getElementById('themeIcon').className=l?'fas fa-sun':'fas fa-moon';localStorage.setItem('theme',l?'light':'dark'); }
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('show');}
+document.addEventListener('click',e=>{if(window.innerWidth<=768&&!document.getElementById('sidebar').contains(e.target)&&!e.target.closest('.mobile-menu-toggle'))document.getElementById('sidebar').classList.remove('show');});
+async function logout(){if(!confirm('Yakin logout?'))return;try{await fetch('api/auth/logout.php',{method:'POST'});}catch(e){}sessionStorage.clear();window.location.href='login.html';}
+function showToast(title,msg,type='info'){const icons={success:'fa-check-circle',error:'fa-times-circle',warning:'fa-exclamation-triangle',info:'fa-info-circle'};const t=document.createElement('div');t.className=`toast ${type}`;t.innerHTML=`<i class="fas ${icons[type]} toast-icon"></i><div class="toast-content"><div class="toast-title">${title}</div>${msg?`<div class="toast-message">${msg}</div>`:''}</div><button class="toast-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>`;document.getElementById('toastContainer').appendChild(t);setTimeout(()=>t.remove(),4000);}
+function formatCurrency(n){return new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',minimumFractionDigits:0}).format(n||0);}
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

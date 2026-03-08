@@ -63,6 +63,10 @@ class RouterSessionProvider extends ChangeNotifier {
 
     final service = await getService();
     _mikrotikProvider = MikrotikProvider(service);
+
+    // Refresh data in background (non-blocking)
+    Future.microtask(() => _mikrotikProvider?.refreshData());
+
     return _mikrotikProvider!;
   }
 

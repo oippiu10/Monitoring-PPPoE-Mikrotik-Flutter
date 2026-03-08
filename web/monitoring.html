@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring — Mikrotik PPPoE Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .session-row.highlight { animation: highlight 1s ease; }
+        @keyframes highlight { from { background: var(--primary-glow); } to { background: transparent; } }
+        .traffic-cell { font-family: monospace; font-size: 12px; }
+        .uptime-text { font-size: 12px; color: var(--text-muted); }
+        .online-dot { display: inline-block; width: 7px; height: 7px; background: var(--success); border-radius: 50%; margin-right: 5px; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.4)} 50%{box-shadow:0 0 0 6px rgba(34,197,94,0)} }
+        .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .chart-box { height: 200px; }
+        .auto-refresh-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+        .refresh-dot { width: 7px; height: 7px; background: var(--success); border-radius: 50%; animation: pulse 1.5s infinite; }
+        @media(max-width:900px){ .charts-row{ grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo-placeholder"><i class="fas fa-network-wired"></i></div>
+            <div class="sidebar-title"><h2>PPPoE Monitor</h2><p>Web Admin Panel</p></div>
+        </div>
+        <nav class="sidebar-nav">
+            <span class="nav-section-label">Menu Utama</span>
+            <a href="dashboard.html" class="nav-item"><i class="fas fa-home"></i><span class="nav-label">Dashboard</span></a>
+            <a href="users.html" class="nav-item"><i class="fas fa-users"></i><span class="nav-label">User Management</span></a>
+            <a href="billing.html" class="nav-item"><i class="fas fa-money-bill-wave"></i><span class="nav-label">Billing</span></a>
+            <a href="monitoring.html" class="nav-item active"><i class="fas fa-chart-line"></i><span class="nav-label">Monitoring</span></a>
+            <a href="map.html" class="nav-item"><i class="fas fa-map-marked-alt"></i><span class="nav-label">Customer Map</span></a>
+            <a href="reports.html" class="nav-item"><i class="fas fa-file-alt"></i><span class="nav-label">Reports</span></a>
+            <a href="settings.html" class="nav-item"><i class="fas fa-cog"></i><span class="nav-label">Settings</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="sidebar-user-avatar" id="userAvatarLetter">A</div>
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name" id="sidebarUserName">Admin</div>
+                    <div class="sidebar-user-role">Administrator</div>
+                </div>
+            </div>
+            <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i><span>Logout</span></button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="mobile-menu-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                <div>
+                    <h1>Monitoring</h1>
+                    <div class="topbar-breadcrumb">Sesi PPPoE aktif real-time</div>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div class="auto-refresh-indicator">
+                    <span class="refresh-dot"></span>
+                    Auto-refresh <span id="refreshCountdown">30</span>s
+                </div>
+                <button class="btn-icon" onclick="toggleTheme()"><i class="fas fa-moon" id="themeIcon"></i></button>
+                <button class="btn btn-outline btn-sm" onclick="refreshNow()"><i class="fas fa-sync"></i> Refresh</button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <!-- Stats -->
+            <div class="stats-grid" style="margin-bottom:24px">
+                <div class="stat-card">
+                    <div class="stat-icon green"><i class="fas fa-wifi"></i></div>
+                    <div class="stat-details"><p class="stat-label">Sesi Aktif</p><h3 class="stat-value" id="statActive">—</h3><p class="stat-change positive" id="statActivePct">—</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon blue"><i class="fas fa-upload"></i></div>
+                    <div class="stat-details"><p class="stat-label">Total Upload</p><h3 class="stat-value" id="statUpload">—</h3><p class="stat-change neutral">Semua sesi aktif</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange"><i class="fas fa-download"></i></div>
+                    <div class="stat-details"><p class="stat-label">Total Download</p><h3 class="stat-value" id="statDownload">—</h3><p class="stat-change neutral">Semua sesi aktif</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon purple"><i class="fas fa-clock"></i></div>
+                    <div class="stat-details"><p class="stat-label">Avg Uptime</p><h3 class="stat-value" id="statAvgUptime">—</h3><p class="stat-change neutral">Rata-rata sesi</p></div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="card">
+                <div class="filter-bar">
+                    <div class="filter-search" style="flex:1">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Cari username, IP..." oninput="filterTable()">
+                    </div>
+                    <span class="badge badge-success" style="padding:6px 12px">
+                        <span class="online-dot"></span> <span id="activeCount">0</span> Online
+                    </span>
+                </div>
+
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>IP Address</th>
+                                <th>MAC Address</th>
+                                <th>Upload</th>
+                                <th>Download</th>
+                                <th>Uptime</th>
+                                <th>Service</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionsTableBody">
+                            <tr><td colspan="8"><div class="loading-overlay"><div class="loading-spinner"></div> Memuat sesi aktif...</div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="padding:12px 20px;border-top:1px solid var(--border);">
+                    <span class="pagination-info" id="tableInfo">Memuat...</span>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Disconnect Confirm Modal -->
+<div class="modal-overlay" id="disconnectModal">
+    <div class="modal" style="max-width:420px">
+        <div class="modal-header">
+            <h3>Putuskan Koneksi</h3>
+            <button class="modal-close" onclick="closeModal('disconnectModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="text-align:center;padding:32px 24px">
+            <div style="width:60px;height:60px;background:var(--warning-glow);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:26px;color:var(--warning)"><i class="fas fa-plug"></i></div>
+            <h4 style="margin-bottom:8px">Putuskan <strong id="disconnectUser"></strong>?</h4>
+            <p style="color:var(--text-muted);font-size:13px">Pengguna akan terputus dari internet dan perlu reconnect ulang.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('disconnectModal')">Batal</button>
+            <button class="btn btn-warning" onclick="executeDisconnect()" id="confirmDisconnectBtn" style="color:white">
+                <i class="fas fa-plug"></i> Putuskan
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let allSessions = [];
+let disconnectTarget = null;
+let refreshTimer = null;
+let countdown = 30;
+
+function init() {
+    loadTheme();
+    try {
+        const u = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+        document.getElementById('sidebarUserName').textContent = u.full_name || u.username || 'Admin';
+        document.getElementById('userAvatarLetter').textContent = (u.full_name || u.username || 'A').charAt(0).toUpperCase();
+    } catch(e) {}
+    loadSessions();
+    startAutoRefresh();
+}
+
+function startAutoRefresh() {
+    countdown = 30;
+    refreshTimer = setInterval(() => {
+        countdown--;
+        document.getElementById('refreshCountdown').textContent = countdown;
+        if (countdown <= 0) {
+            loadSessions();
+            countdown = 30;
+        }
+    }, 1000);
+}
+
+function refreshNow() {
+    countdown = 30;
+    loadSessions();
+    showToast('Refresh', 'Data diperbarui', 'info');
+}
+
+async function loadSessions() {
+    try {
+        const res = await fetch('../../api/get_all_users.php?status=online&limit=500');
+        const data = await res.json();
+        if (data.success && data.data) {
+            allSessions = data.data;
+            updateStats(data);
+            filterTable();
+        } else {
+            // Try alternative endpoint
+            await loadSessionsAlt();
+        }
+    } catch(e) {
+        await loadSessionsAlt();
+    }
+}
+
+async function loadSessionsAlt() {
+    try {
+        const res = await fetch('../../api/check_user_group.php?group=active');
+        const data = await res.json();
+        if (data && Array.isArray(data)) {
+            allSessions = data;
+            document.getElementById('statActive').textContent = data.length;
+            filterTable();
+        } else {
+            showNoData();
+        }
+    } catch(e) {
+        showNoData();
+    }
+}
+
+function showNoData() {
+    document.getElementById('sessionsTableBody').innerHTML = `<tr><td colspan="8"><div class="empty-state"><i class="fas fa-plug"></i><h4>Tidak dapat memuat sesi</h4><p>Periksa koneksi ke server Mikrotik</p></div></td></tr>`;
+}
+
+function updateStats(data) {
+    const sessions = data.data || [];
+    document.getElementById('statActive').textContent = sessions.length;
+    document.getElementById('activeCount').textContent = sessions.length;
+    document.getElementById('statActivePct').textContent = `dari ${data.total || sessions.length} total user`;
+
+    let totalUp = 0, totalDown = 0;
+    sessions.forEach(s => {
+        totalUp += parseInt(s.bytes_in || s['bytes-in'] || 0);
+        totalDown += parseInt(s.bytes_out || s['bytes-out'] || 0);
+    });
+
+    document.getElementById('statUpload').textContent = formatBytes(totalUp);
+    document.getElementById('statDownload').textContent = formatBytes(totalDown);
+}
+
+function filterTable() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = allSessions.filter(s =>
+        (s.username || '').toLowerCase().includes(q) ||
+        (s.address || s.ip_address || s['caller-id'] || '').toLowerCase().includes(q)
+    );
+
+    document.getElementById('tableInfo').textContent = `Menampilkan ${filtered.length} dari ${allSessions.length} sesi aktif`;
+    document.getElementById('activeCount').textContent = allSessions.length;
+
+    const tbody = document.getElementById('sessionsTableBody');
+    if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><i class="fas fa-wifi"></i><h4>Tidak ada sesi aktif</h4><p>Tidak ada pengguna yang terhubung saat ini</p></div></td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(s => {
+        const bytesUp = formatBytes(parseInt(s.bytes_in || s['bytes-in'] || 0));
+        const bytesDown = formatBytes(parseInt(s.bytes_out || s['bytes-out'] || 0));
+        return `<tr class="session-row">
+            <td><strong>${escHtml(s.username || s.name || '—')}</strong></td>
+            <td><span class="ip-text">${escHtml(s.address || s.ip_address || s['address'] || '—')}</span></td>
+            <td><span class="ip-text fs-12">${escHtml(s['caller-id'] || s.mac_address || '—')}</span></td>
+            <td><span class="traffic-cell" style="color:var(--primary)">↑ ${bytesUp}</span></td>
+            <td><span class="traffic-cell" style="color:var(--orange)">↓ ${bytesDown}</span></td>
+            <td><span class="uptime-text"><i class="fas fa-clock"></i> ${escHtml(s.uptime || s['uptime'] || '—')}</span></td>
+            <td><span class="badge badge-secondary">${escHtml(s.service || s['service'] || 'ppp')}</span></td>
+            <td>
+                <button class="btn btn-warning btn-sm" onclick="openDisconnect('${escHtml(s.username||s.name||'')}', '${escHtml(s['.id']||s.id||'')}')">
+                    <i class="fas fa-plug"></i> Putus
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function openDisconnect(username, id) {
+    disconnectTarget = { username, id };
+    document.getElementById('disconnectUser').textContent = username;
+    openModal('disconnectModal');
+}
+
+async function executeDisconnect() {
+    if (!disconnectTarget) return;
+    const btn = document.getElementById('confirmDisconnectBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    try {
+        const res = await fetch('../../api/mikrotik_service.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'disconnect', username: disconnectTarget.username, id: disconnectTarget.id })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Berhasil', `${disconnectTarget.username} diputuskan`, 'success');
+            closeModal('disconnectModal');
+            setTimeout(loadSessions, 1000);
+        } else {
+            showToast('Gagal', data.message || 'Gagal memutus koneksi', 'error');
+        }
+    } catch(e) {
+        showToast('Error', 'Tidak dapat terhubung ke server', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-plug"></i> Putuskan';
+        disconnectTarget = null;
+    }
+}
+
+function loadTheme() { if(localStorage.getItem('theme')==='light'){document.body.classList.add('light-theme');document.getElementById('themeIcon').className='fas fa-sun';} }
+function toggleTheme(){ document.body.classList.toggle('light-theme');const l=document.body.classList.contains('light-theme');document.getElementById('themeIcon').className=l?'fas fa-sun':'fas fa-moon';localStorage.setItem('theme',l?'light':'dark'); }
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('show');}
+document.addEventListener('click',e=>{if(window.innerWidth<=768&&!document.getElementById('sidebar').contains(e.target)&&!e.target.closest('.mobile-menu-toggle'))document.getElementById('sidebar').classList.remove('show');});
+async function logout(){if(!confirm('Yakin logout?'))return;try{await fetch('api/auth/logout.php',{method:'POST'});}catch(e){}sessionStorage.clear();window.location.href='login.html';}
+function showToast(title,msg,type='info'){const icons={success:'fa-check-circle',error:'fa-times-circle',warning:'fa-exclamation-triangle',info:'fa-info-circle'};const t=document.createElement('div');t.className=`toast ${type}`;t.innerHTML=`<i class="fas ${icons[type]} toast-icon"></i><div class="toast-content"><div class="toast-title">${title}</div>${msg?`<div class="toast-message">${msg}</div>`:''}</div><button class="toast-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>`;document.getElementById('toastContainer').appendChild(t);setTimeout(()=>t.remove(),4000);}
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))closeModal(e.target.id);});
+function formatBytes(b){if(!b||b===0)return'0 B';const u=['B','KB','MB','GB'];let i=0;while(b>=1024&&i<3){b/=1024;i++;}return b.toFixed(1)+' '+u[i];}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+const ipText = document.createElement('style');ipText.textContent='.ip-text{font-family:monospace;font-size:12px;color:var(--text-secondary);}';document.head.appendChild(ipText);
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

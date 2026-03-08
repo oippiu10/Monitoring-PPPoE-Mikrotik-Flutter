@@ -18,9 +18,7 @@ class MikrotikProvider with ChangeNotifier {
   DateTime? _pppSecretsLastFetch;
   DateTime? _pppSessionsLastFetch;
 
-  MikrotikProvider(this._service) {
-    refreshData();
-  }
+  MikrotikProvider(this._service);
 
   // Getters
   bool get isLoading => _isLoading;
@@ -65,9 +63,13 @@ class MikrotikProvider with ChangeNotifier {
       notifyListeners();
 
       final now = DateTime.now();
-      final cacheValid = _pppSecretsLastFetch != null && now.difference(_pppSecretsLastFetch!) < Duration(minutes: 5);
+      final cacheValid = _pppSecretsLastFetch != null &&
+          now.difference(_pppSecretsLastFetch!) < Duration(minutes: 5);
 
-      if (!forceRefresh && cacheValid && _pppSecrets.isNotEmpty && _pppSessions.isNotEmpty) {
+      if (!forceRefresh &&
+          cacheValid &&
+          _pppSecrets.isNotEmpty &&
+          _pppSessions.isNotEmpty) {
         // Pakai cache, tidak fetch ulang
         _isLoading = false;
         notifyListeners();
@@ -107,7 +109,6 @@ class MikrotikProvider with ChangeNotifier {
       _pppProfiles = pppProfileData;
       _pppSecretsLastFetch = now;
       _pppSessionsLastFetch = now;
-
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -135,7 +136,8 @@ class MikrotikProvider with ChangeNotifier {
       _isLoading = true;
       notifyListeners();
       final now = DateTime.now();
-      final cacheValid = _pppSecretsLastFetch != null && now.difference(_pppSecretsLastFetch!) < Duration(minutes: 5);
+      final cacheValid = _pppSecretsLastFetch != null &&
+          now.difference(_pppSecretsLastFetch!) < Duration(minutes: 5);
       if (!forceRefresh && cacheValid && _pppSecrets.isNotEmpty) {
         _isLoading = false;
         notifyListeners();
@@ -182,7 +184,7 @@ class MikrotikProvider with ChangeNotifier {
 
       _identity = identityData['name'] as String?;
       _resource = resourceData;
-      
+
       if (hasListeners) notifyListeners();
     } catch (e) {
       // Optional: handle error, but don't set _isLoading/_error global state

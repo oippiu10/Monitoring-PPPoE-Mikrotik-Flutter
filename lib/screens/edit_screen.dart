@@ -76,7 +76,7 @@ class _EditScreenState extends State<EditScreen> {
     super.dispose();
   }
 
-  Future<void> _showSuccessDialog() async {
+  Future<void> _showSuccessDialog({bool wasDisconnected = false}) async {
     bool obscureDialogPassword = true;
 
     return showDialog(
@@ -217,6 +217,36 @@ class _EditScreenState extends State<EditScreen> {
                         ],
                       ),
                     ),
+
+                    // Disconnect Info Badge (if user was disconnected)
+                    if (wasDisconnected) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 18, color: Colors.orange.shade700),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Koneksi aktif telah diputus. User akan menggunakan data baru saat reconnect.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orange.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
 
                     // OK Button
@@ -279,7 +309,7 @@ class _EditScreenState extends State<EditScreen> {
     try {
       final provider = Provider.of<MikrotikProvider>(context, listen: false);
 
-      await provider.service.updatePPPSecret(
+      final result = await provider.service.updatePPPSecret(
         widget.user['name'],
         {
           'name': _usernameController.text.trim(),
@@ -290,8 +320,10 @@ class _EditScreenState extends State<EditScreen> {
 
       if (!mounted) return;
 
-      // Show success dialog
-      await _showSuccessDialog();
+      // Show success dialog with disconnect info
+      await _showSuccessDialog(
+        wasDisconnected: result['disconnected'] ?? false,
+      );
 
       // Refresh data
       provider.refreshData();

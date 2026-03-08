@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — Mikrotik PPPoE Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .settings-layout { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+        .settings-nav { display: flex; flex-direction: column; gap: 2px; }
+        .settings-nav-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            border-radius: var(--radius-md); color: var(--text-secondary); cursor: pointer;
+            transition: var(--transition); font-size: 13px; font-weight: 500; border: none;
+            background: none; width: 100%; font-family: inherit; text-align: left;
+        }
+        .settings-nav-item:hover { background: var(--bg-card); color: var(--text-primary); }
+        .settings-nav-item.active { background: var(--primary-glow); color: var(--primary); }
+        .settings-panel { display: none; }
+        .settings-panel.active { display: block; }
+        .settings-section { margin-bottom: 24px; }
+        .settings-section-title { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+        .router-card { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: 8px; transition: border-color 0.4s ease; }
+        .router-info { display: flex; align-items: center; gap: 12px; }
+        .router-icon { width: 38px; height: 38px; background: var(--primary-glow); color: var(--primary); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        .router-details .router-name { font-size: 13px; font-weight: 600; }
+        .router-details .router-host { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+        .toggle-switch { position: relative; width: 40px; height: 22px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg-card-hover); border-radius: 22px; transition: .3s; }
+        .toggle-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.3s; }
+        input:checked + .toggle-slider { background: var(--primary); }
+        input:checked + .toggle-slider:before { transform: translateX(18px); }
+        .tips-box { background: var(--warning-glow); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius-md); padding: 12px 14px; margin-top: 12px; font-size: 12px; color: var(--warning); display: none; }
+        .tips-box.show { display: block; }
+        .tips-box ul { margin: 6px 0 0 16px; padding: 0; }
+        .tips-box li { margin-bottom: 3px; }
+        @media(max-width:768px){ .settings-layout{ grid-template-columns:1fr; } .settings-nav{ flex-direction:row; flex-wrap:wrap; } }
+    </style>
+</head>
+<body>
+<div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo-placeholder"><i class="fas fa-network-wired"></i></div>
+            <div class="sidebar-title"><h2>PPPoE Monitor</h2><p>Web Admin Panel</p></div>
+        </div>
+        <nav class="sidebar-nav">
+            <span class="nav-section-label">Menu Utama</span>
+            <a href="dashboard.html" class="nav-item"><i class="fas fa-home"></i><span class="nav-label">Dashboard</span></a>
+            <a href="users.html" class="nav-item"><i class="fas fa-users"></i><span class="nav-label">User Management</span></a>
+            <a href="billing.html" class="nav-item"><i class="fas fa-money-bill-wave"></i><span class="nav-label">Billing</span></a>
+            <a href="monitoring.html" class="nav-item"><i class="fas fa-chart-line"></i><span class="nav-label">Monitoring</span></a>
+            <a href="map.html" class="nav-item"><i class="fas fa-map-marked-alt"></i><span class="nav-label">Customer Map</span></a>
+            <a href="reports.html" class="nav-item"><i class="fas fa-file-alt"></i><span class="nav-label">Reports</span></a>
+            <a href="settings.html" class="nav-item active"><i class="fas fa-cog"></i><span class="nav-label">Settings</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="sidebar-user-avatar" id="userAvatarLetter">A</div>
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name" id="sidebarUserName">Admin</div>
+                    <div class="sidebar-user-role">Administrator</div>
+                </div>
+            </div>
+            <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i><span>Logout</span></button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="mobile-menu-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                <div>
+                    <h1>Settings</h1>
+                    <div class="topbar-breadcrumb">Konfigurasi sistem</div>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <button class="btn-icon" onclick="toggleTheme()"><i class="fas fa-moon" id="themeIcon"></i></button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <div class="settings-layout">
+
+                <!-- Settings Nav -->
+                <div class="card" style="padding:12px;align-self:start">
+                    <div class="settings-nav">
+                        <button class="settings-nav-item active" onclick="showPanel('router', this)">
+                            <i class="fas fa-server"></i> Konfigurasi Router
+                        </button>
+                        <button class="settings-nav-item" onclick="showPanel('account', this)">
+                            <i class="fas fa-user-shield"></i> Akun Admin
+                        </button>
+                        <button class="settings-nav-item" onclick="showPanel('billing', this)">
+                            <i class="fas fa-money-bill-wave"></i> Billing
+                        </button>
+                        <button class="settings-nav-item" onclick="showPanel('notification', this)">
+                            <i class="fas fa-bell"></i> Notifikasi
+                        </button>
+                        <button class="settings-nav-item" onclick="showPanel('system', this)">
+                            <i class="fas fa-tools"></i> Sistem
+                        </button>
+                        <button class="settings-nav-item" onclick="showPanel('about', this)">
+                            <i class="fas fa-info-circle"></i> Tentang
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <!-- Router Config -->
+                    <div class="settings-panel active card" id="panel-router">
+                        <div class="card-header">
+                            <h3><i class="fas fa-server" style="color:var(--primary);margin-right:8px"></i>Konfigurasi Router Mikrotik</h3>
+                            <button class="btn btn-primary btn-sm" onclick="openModal('routerModal')"><i class="fas fa-plus"></i> Tambah Router</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="settings-section">
+                                <div class="settings-section-title">Router Terdaftar</div>
+                                <div id="routerList"></div>
+                            </div>
+
+                            <!-- Troubleshooting Guide -->
+                            <div class="settings-section">
+                                <div class="settings-section-title">Panduan Koneksi Mikrotik</div>
+                                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;font-size:13px">
+                                    <p style="font-weight:600;margin-bottom:10px;color:var(--text-primary)"><i class="fas fa-info-circle" style="color:var(--primary)"></i> Prasyarat agar bisa terhubung:</p>
+                                    <ol style="padding-left:20px;color:var(--text-secondary);line-height:2">
+                                        <li>Buka web panel via <strong>XAMPP/Laragon</strong> (bukan Live Server)</li>
+                                        <li>Di Mikrotik: <code>IP &gt; Services</code> → aktifkan <strong>api</strong> (port 8728)</li>
+                                        <li>Pastikan IP server ada di <strong>Allowed Address</strong> API service</li>
+                                        <li>Firewall Mikrotik bolehkan port <strong>8728</strong> dari IP server</li>
+                                        <li>Username & password harus punya <strong>hak akses API</strong> di Mikrotik</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Account Settings -->
+                    <div class="settings-panel card" id="panel-account">
+                        <div class="card-header"><h3><i class="fas fa-user-shield" style="color:var(--purple);margin-right:8px"></i>Pengaturan Akun</h3></div>
+                        <div class="card-body">
+                            <div class="settings-section">
+                                <div class="settings-section-title">Profil Admin</div>
+                                <div class="form-row">
+                                    <div class="form-group"><label>Nama Lengkap</label><input type="text" id="accFullName" class="form-control" placeholder="Nama Anda"></div>
+                                    <div class="form-group"><label>Email</label><input type="email" id="accEmail" class="form-control" placeholder="email@domain.com"></div>
+                                </div>
+                                <button class="btn btn-primary" onclick="saveAccountInfo()"><i class="fas fa-save"></i> Simpan Profil</button>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-title">Ganti Password</div>
+                                <div class="form-group"><label>Password Lama</label><input type="password" id="oldPw" class="form-control" placeholder="Password saat ini"></div>
+                                <div class="form-row">
+                                    <div class="form-group"><label>Password Baru</label><input type="password" id="newPw" class="form-control" placeholder="Password baru"></div>
+                                    <div class="form-group"><label>Konfirmasi</label><input type="password" id="confirmPw" class="form-control" placeholder="Ulangi password baru"></div>
+                                </div>
+                                <button class="btn btn-warning" onclick="changePassword()" style="color:white"><i class="fas fa-lock"></i> Ganti Password</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Billing Settings -->
+                    <div class="settings-panel card" id="panel-billing">
+                        <div class="card-header"><h3><i class="fas fa-money-bill-wave" style="color:var(--success);margin-right:8px"></i>Pengaturan Billing</h3></div>
+                        <div class="card-body">
+                            <div class="settings-section">
+                                <div class="settings-section-title">Konfigurasi Tagihan</div>
+                                <div class="form-row">
+                                    <div class="form-group"><label>Nama ISP / Perusahaan</label><input type="text" id="billingIsp" class="form-control" placeholder="Nama ISP Anda"></div>
+                                    <div class="form-group"><label>Tanggal Tagihan Default</label><input type="number" id="billingDate" class="form-control" min="1" max="31" placeholder="1 - 31"></div>
+                                </div>
+                                <div class="form-group"><label>Pesan Kuitansi / Invoice</label><textarea id="billingMessage" class="form-control" rows="3" placeholder="Terima kasih atas pembayaran Anda..."></textarea></div>
+                                <button class="btn btn-primary" onclick="saveBillingSettings()"><i class="fas fa-save"></i> Simpan</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notification Settings -->
+                    <div class="settings-panel card" id="panel-notification">
+                        <div class="card-header"><h3><i class="fas fa-bell" style="color:var(--warning);margin-right:8px"></i>Pengaturan Notifikasi</h3></div>
+                        <div class="card-body">
+                            <div class="settings-section">
+                                <div class="settings-section-title">Notifikasi WhatsApp (WAHA)</div>
+                                <div class="form-group"><label>URL WAHA API</label><input type="url" id="wahaUrl" class="form-control" placeholder="http://localhost:3000"></div>
+                                <div class="form-row">
+                                    <div class="form-group"><label>Session Name</label><input type="text" id="wahaSess" class="form-control" placeholder="default"></div>
+                                    <div class="form-group"><label>API Key</label><input type="password" id="wahaKey" class="form-control" placeholder="Opsional"></div>
+                                </div>
+                                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between">
+                                    <div><label style="margin:0">Aktifkan WAHA</label><p style="font-size:11px;color:var(--text-muted);margin-top:2px">Kirim pesan WhatsApp otomatis</p></div>
+                                    <label class="toggle-switch"><input type="checkbox" id="wahaEnabled"><span class="toggle-slider"></span></label>
+                                </div>
+                                <button class="btn btn-primary" onclick="saveNotifSettings()"><i class="fas fa-save"></i> Simpan</button>
+                                <button class="btn btn-outline" onclick="testWAHA()" style="margin-left:8px"><i class="fas fa-paper-plane"></i> Test Kirim</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Settings -->
+                    <div class="settings-panel card" id="panel-system">
+                        <div class="card-header"><h3><i class="fas fa-tools" style="color:var(--orange);margin-right:8px"></i>Pengaturan Sistem</h3></div>
+                        <div class="card-body">
+                            <div class="settings-section">
+                                <div class="settings-section-title">Database & Tools</div>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                                    <button class="btn btn-outline" onclick="runSync()"><i class="fas fa-sync"></i> Sync PPPoE ke DB</button>
+                                    <button class="btn btn-outline" onclick="runBackup()"><i class="fas fa-database"></i> Backup Database</button>
+                                    <button class="btn btn-outline" onclick="viewLogs()"><i class="fas fa-scroll"></i> Lihat System Logs</button>
+                                    <button class="btn btn-outline" onclick="clearCache()"><i class="fas fa-broom"></i> Clear Cache</button>
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-title">Reset Password Web Admin</div>
+                                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Jalankan SQL ini di phpMyAdmin jika lupa password:</p>
+                                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;font-family:monospace;font-size:12px;color:var(--primary)">
+                                    UPDATE admin_users SET password = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi' WHERE username = 'admin';
+                                </div>
+                                <p style="font-size:11px;color:var(--text-muted);margin-top:6px">Password setelah reset: <code style="background:var(--bg-card);padding:2px 6px;border-radius:4px">admin123</code></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- About -->
+                    <div class="settings-panel card" id="panel-about">
+                        <div class="card-header"><h3><i class="fas fa-info-circle" style="color:var(--primary);margin-right:8px"></i>Tentang Aplikasi</h3></div>
+                        <div class="card-body" style="text-align:center;padding:40px">
+                            <div style="width:70px;height:70px;background:linear-gradient(135deg,var(--primary),var(--purple));border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:32px;color:white;box-shadow:0 8px 24px rgba(79,142,247,0.3)">
+                                <i class="fas fa-network-wired"></i>
+                            </div>
+                            <h2 style="margin-bottom:4px">Mikrotik PPPoE Monitor</h2>
+                            <p style="color:var(--text-muted);margin-bottom:4px">Web Admin Panel</p>
+                            <p style="font-size:13px;color:var(--primary);margin-bottom:24px">Version 1.0.9</p>
+                            <div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary)">
+                                <span><i class="fas fa-globe" style="margin-right:4px"></i>cmmnetwork.online</span>
+                                <span><i class="fas fa-envelope" style="margin-right:4px"></i>admin@cmmnetwork.online</span>
+                            </div>
+                            <hr style="border-color:var(--border);margin:20px 0">
+                            <p style="font-size:12px;color:var(--text-muted)">© 2026 CMM Network. Dibuat dengan ❤️ untuk pengelola ISP Indonesia.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Add Router Modal -->
+<div class="modal-overlay" id="routerModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Tambah Router</h3>
+            <button class="modal-close" onclick="closeModal('routerModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group"><label>Nama Router</label><input type="text" id="rName" class="form-control" placeholder="Router Utama"></div>
+            <div class="form-row">
+                <div class="form-group"><label>IP / Host *</label><input type="text" id="rHost" class="form-control" placeholder="192.168.1.1"></div>
+                <div class="form-group"><label>Port API</label><input type="number" id="rPort" class="form-control" value="8728"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Username Mikrotik</label><input type="text" id="rUser" class="form-control" placeholder="admin"></div>
+                <div class="form-group"><label>Password Mikrotik</label><input type="password" id="rPass" class="form-control" placeholder="Password router"></div>
+            </div>
+            <div style="background:var(--primary-glow);border:1px solid rgba(79,142,247,0.2);border-radius:var(--radius-md);padding:10px 12px;font-size:12px;color:var(--text-secondary);margin-top:8px">
+                <i class="fas fa-info-circle" style="color:var(--primary)"></i>
+                Pastikan service API Mikrotik aktif di port 8728 dan user memiliki hak akses API.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('routerModal')">Batal</button>
+            <button class="btn btn-primary" onclick="saveRouter()"><i class="fas fa-save"></i> Simpan</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===============================================
+// INIT
+// ===============================================
+function init() {
+    loadTheme();
+    try {
+        const u = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+        document.getElementById('sidebarUserName').textContent = u.full_name || u.username || 'Admin';
+        document.getElementById('userAvatarLetter').textContent = (u.full_name || u.username || 'A').charAt(0).toUpperCase();
+    } catch(e) {}
+    loadRouterList();
+    loadSettings();
+}
+
+// ===============================================
+// PANEL NAV
+// ===============================================
+function showPanel(name, btn) {
+    document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    btn.classList.add('active');
+}
+
+// ===============================================
+// ROUTER LIST
+// ===============================================
+function loadRouterList() {
+    const stored = JSON.parse(localStorage.getItem('routers') || '[]');
+    const routers = stored.length > 0 ? stored : [{ name: 'Router Utama', host: '192.168.99.1', port: 8728, username: 'admin', password: '' }];
+    renderRouters(routers);
+}
+
+function renderRouters(routers) {
+    const el = document.getElementById('routerList');
+    if (!routers || routers.length === 0) {
+        el.innerHTML = '<div class="empty-state" style="padding:24px"><i class="fas fa-server" style="font-size:28px"></i><h4>Belum ada router</h4><p>Klik "+ Tambah Router"</p></div>';
+        return;
+    }
+    el.innerHTML = routers.map(function(r, i) {
+        return '<div class="router-card" id="router-card-' + i + '">' +
+            '<div class="router-info">' +
+                '<div class="router-icon"><i class="fas fa-server"></i></div>' +
+                '<div class="router-details">' +
+                    '<div class="router-name">' + escHtml(r.name || 'Router ' + (i+1)) + '</div>' +
+                    '<div class="router-host">' + escHtml(r.host || '—') + ':' + (r.port || 8728) +
+                    ' &nbsp;·&nbsp; <span style="color:var(--text-muted)">user:</span> ' + escHtml(r.username || 'admin') + '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:10px">' +
+                '<button class="btn btn-outline btn-sm" id="testBtn' + i + '" onclick="testRouter(' + i + ')">' +
+                    '<i class="fas fa-plug"></i> Test' +
+                '</button>' +
+                '<button class="btn btn-danger btn-sm btn-icon-only" onclick="deleteRouter(' + i + ')"><i class="fas fa-trash"></i></button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function saveRouter() {
+    const host = document.getElementById('rHost').value.trim();
+    if (!host) { showToast('Validasi', 'IP / Host wajib diisi', 'warning'); return; }
+
+    const router = {
+        name: document.getElementById('rName').value.trim() || 'Router Baru',
+        host: host,
+        port: parseInt(document.getElementById('rPort').value) || 8728,
+        username: document.getElementById('rUser').value.trim() || 'admin',
+        password: document.getElementById('rPass').value
+    };
+
+    const routers = JSON.parse(localStorage.getItem('routers') || '[]');
+    routers.push(router);
+    localStorage.setItem('routers', JSON.stringify(routers));
+    renderRouters(routers);
+    closeModal('routerModal');
+    showToast('Berhasil', 'Router "' + router.name + '" ditambahkan', 'success');
+
+    // Clear form
+    document.getElementById('rName').value = '';
+    document.getElementById('rHost').value = '';
+    document.getElementById('rPass').value = '';
+    document.getElementById('rPort').value = '8728';
+    document.getElementById('rUser').value = '';
+}
+
+function deleteRouter(idx) {
+    if (!confirm('Hapus router ini?')) return;
+    const routers = JSON.parse(localStorage.getItem('routers') || '[]');
+    routers.splice(idx, 1);
+    localStorage.setItem('routers', JSON.stringify(routers));
+    renderRouters(routers);
+    showToast('Berhasil', 'Router dihapus', 'success');
+}
+
+// ===============================================
+// TEST KONEKSI ROUTER
+// ===============================================
+async function testRouter(idx) {
+    const routers = JSON.parse(localStorage.getItem('routers') || '[]');
+    const r = routers[idx];
+    if (!r) {
+        // Default router (dari localStorage kosong) — tetap test
+        const defaults = [{ name: 'Router Utama', host: '192.168.99.1', port: 8728, username: 'admin', password: '' }];
+        return testRouterData(idx, defaults[0] || null);
+    }
+    return testRouterData(idx, r);
+}
+
+async function testRouterData(idx, r) {
+    if (!r) { showToast('Error', 'Router tidak ditemukan', 'error'); return; }
+
+    const btn = document.getElementById('testBtn' + idx);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+
+    showToast('Test Koneksi', 'Menguji ' + r.host + ':' + (r.port || 8728) + '...', 'info');
+
+    try {
+        const params = new URLSearchParams({
+            host: r.host || '',
+            port: r.port || 8728,
+            user: r.username || 'admin',
+            pass: r.password || ''
+        });
+
+        const res = await fetch('../../api/debug_connection.php?' + params.toString());
+        const ct = res.headers.get('content-type') || '';
+
+        if (!ct.includes('application/json')) {
+            showToast('❗ PHP Tidak Aktif', 'Fitur test koneksi memerlukan server PHP. Buka via XAMPP/Laragon, bukan Live Server (port 5500).', 'warning');
+            return;
+        }
+
+        const data = await res.json();
+
+        if (data.success) {
+            showToast('✅ Terhubung!', r.host + ' berhasil · Latency: ' + data.latency_ms + 'ms', 'success');
+            const card = document.getElementById('router-card-' + idx);
+            if (card) {
+                card.style.borderColor = 'var(--success)';
+                setTimeout(function() { card.style.borderColor = ''; }, 3000);
+            }
+        } else {
+            showToast('❌ Gagal Terhubung', data.message || 'Tidak dapat terhubung ke Mikrotik', 'error');
+
+            // Tips
+            if (data.tips && data.tips.length > 0) {
+                setTimeout(function() {
+                    showToast('💡 Tips Troubleshooting', data.tips.slice(0, 3).join('<br>• '), 'warning');
+                }, 800);
+            }
+        }
+    } catch(e) {
+        showToast('Error', 'Tidak dapat menghubungi server PHP. Gunakan XAMPP/Laragon.', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plug"></i> Test'; }
+    }
+}
+
+// ===============================================
+// SETTINGS
+// ===============================================
+function loadSettings() {
+    const s = JSON.parse(localStorage.getItem('webSettings') || '{}');
+    if (s.isp) document.getElementById('billingIsp').value = s.isp;
+    if (s.billingDate) document.getElementById('billingDate').value = s.billingDate;
+    if (s.billingMsg) document.getElementById('billingMessage').value = s.billingMsg;
+    if (s.wahaUrl) document.getElementById('wahaUrl').value = s.wahaUrl;
+    if (s.wahaSess) document.getElementById('wahaSess').value = s.wahaSess;
+    if (s.wahaEnabled) document.getElementById('wahaEnabled').checked = s.wahaEnabled;
+}
+
+function saveBillingSettings() {
+    const s = JSON.parse(localStorage.getItem('webSettings') || '{}');
+    s.isp = document.getElementById('billingIsp').value;
+    s.billingDate = document.getElementById('billingDate').value;
+    s.billingMsg = document.getElementById('billingMessage').value;
+    localStorage.setItem('webSettings', JSON.stringify(s));
+    showToast('Disimpan', 'Pengaturan billing disimpan', 'success');
+}
+
+function saveNotifSettings() {
+    const s = JSON.parse(localStorage.getItem('webSettings') || '{}');
+    s.wahaUrl = document.getElementById('wahaUrl').value;
+    s.wahaSess = document.getElementById('wahaSess').value;
+    s.wahaEnabled = document.getElementById('wahaEnabled').checked;
+    localStorage.setItem('webSettings', JSON.stringify(s));
+    showToast('Disimpan', 'Pengaturan notifikasi disimpan', 'success');
+}
+
+function testWAHA() {
+    const url = document.getElementById('wahaUrl').value;
+    if (!url) { showToast('Error', 'URL WAHA belum diisi', 'error'); return; }
+    showToast('Info', 'Fitur test WAHA memerlukan server WAHA aktif dan terkoneksi', 'warning');
+}
+
+function saveAccountInfo() { showToast('Info', 'Fitur update profil memerlukan PHP backend aktif', 'info'); }
+function changePassword() {
+    const np = document.getElementById('newPw').value;
+    const cp = document.getElementById('confirmPw').value;
+    if (np !== cp) { showToast('Error', 'Password baru tidak cocok', 'error'); return; }
+    if (np.length < 6) { showToast('Validasi', 'Password minimal 6 karakter', 'warning'); return; }
+    showToast('Info', 'Fitur ganti password memerlukan PHP backend aktif', 'info');
+}
+
+async function runSync() {
+    showToast('Sync', 'Memulai sinkronisasi...', 'info');
+    try {
+        const res = await fetch('../../api/sync_ppp_to_db.php');
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) { showToast('PHP Tidak Aktif', 'Jalankan via XAMPP/Laragon', 'warning'); return; }
+        const data = await res.json();
+        showToast(data.success ? 'Berhasil' : 'Gagal', data.message || '', data.success ? 'success' : 'error');
+    } catch(e) { showToast('Error', 'Tidak dapat terhubung ke server', 'error'); }
+}
+
+function runBackup() { window.open('../../api/create_full_backup.php', '_blank'); showToast('Backup', 'Membuka halaman backup...', 'info'); }
+function viewLogs() { window.location.href = 'monitoring.html'; }
+function clearCache() { localStorage.removeItem('dashboardCache'); showToast('Berhasil', 'Cache dibersihkan', 'success'); }
+
+// ===============================================
+// THEME & LAYOUT
+// ===============================================
+function loadTheme() {
+    if (localStorage.getItem('theme') === 'light') {
+        document.body.classList.add('light-theme');
+        document.getElementById('themeIcon').className = 'fas fa-sun';
+    }
+}
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    const l = document.body.classList.contains('light-theme');
+    document.getElementById('themeIcon').className = l ? 'fas fa-sun' : 'fas fa-moon';
+    localStorage.setItem('theme', l ? 'light' : 'dark');
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('show'); }
+document.addEventListener('click', function(e) {
+    if (window.innerWidth <= 768 && !document.getElementById('sidebar').contains(e.target) && !e.target.closest('.mobile-menu-toggle'))
+        document.getElementById('sidebar').classList.remove('show');
+});
+async function logout() {
+    if (!confirm('Yakin logout?')) return;
+    try { await fetch('api/auth/logout.php', { method: 'POST' }); } catch(e) {}
+    sessionStorage.clear(); window.location.href = 'login.html';
+}
+
+// ===============================================
+// TOAST
+// ===============================================
+function showToast(title, msg, type) {
+    type = type || 'info';
+    var icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+    var t = document.createElement('div');
+    t.className = 'toast ' + type;
+    t.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + ' toast-icon"></i>' +
+        '<div class="toast-content"><div class="toast-title">' + title + '</div>' +
+        (msg ? '<div class="toast-message">' + msg + '</div>' : '') + '</div>' +
+        '<button class="toast-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>';
+    document.getElementById('toastContainer').appendChild(t);
+    setTimeout(function() { if (t.parentElement) t.remove(); }, 6000);
+}
+
+// ===============================================
+// MODAL
+// ===============================================
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('modal-overlay')) closeModal(e.target.id);
+});
+
+function escHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

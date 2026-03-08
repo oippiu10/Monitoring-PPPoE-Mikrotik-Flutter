@@ -119,8 +119,9 @@ class ApiService {
       if (response.statusCode == 200) {
         final decoded = _decodeJsonOrThrow(response) as Map<String, dynamic>;
         // invalidate related caches after successful mutation
-        _cache.remove('all_users_with_payments');
-        _cacheTimestamps.remove('all_users_with_payments');
+        final cacheKey = 'all_users_with_payments_$routerId';
+        _cache.remove(cacheKey);
+        _cacheTimestamps.remove(cacheKey);
 
         // Log Activity
         LogService.logActivity(
@@ -174,8 +175,9 @@ class ApiService {
         final result = _decodeJsonOrThrow(response) as Map<String, dynamic>;
         if (result['success'] == true) {
           // invalidate related caches after successful mutation
-          _cache.remove('all_users_with_payments');
-          _cacheTimestamps.remove('all_users_with_payments');
+          final cacheKey = 'all_users_with_payments_$routerId';
+          _cache.remove(cacheKey);
+          _cacheTimestamps.remove(cacheKey);
 
           // Log Activity
           LogService.logActivity(
@@ -364,8 +366,9 @@ class ApiService {
       final data = _decodeJsonOrThrow(response) as Map<String, dynamic>;
       if (data['success'] == true) {
         // invalidate related caches after successful mutation
-        _cache.remove('all_users_with_payments');
-        _cacheTimestamps.remove('all_users_with_payments');
+        final cacheKey = 'all_users_with_payments_$routerId';
+        _cache.remove(cacheKey);
+        _cacheTimestamps.remove(cacheKey);
 
         // Log Activity
         LogService.logActivity(
@@ -410,8 +413,8 @@ class ApiService {
   static Future<List<Map<String, dynamic>>> fetchAllUsersWithPayments(
       {required String routerId}) async {
     try {
-      // Check cache first
-      final cacheKey = 'all_users_with_payments';
+      // Check cache first - IMPORTANT: Include routerId in cache key for multi-router support
+      final cacheKey = 'all_users_with_payments_$routerId';
       if (_cache.containsKey(cacheKey) &&
           _cacheTimestamps.containsKey(cacheKey) &&
           DateTime.now().difference(_cacheTimestamps[cacheKey]!).inMinutes <
@@ -440,7 +443,7 @@ class ApiService {
               .map((item) => Map<String, dynamic>.from(item as Map))
               .toList();
 
-          // Cache the result
+          // Cache the result with router-specific key
           _cache[cacheKey] = convertedData;
           _cacheTimestamps[cacheKey] = DateTime.now();
 
@@ -1076,8 +1079,9 @@ class ApiService {
           );
 
           // Invalidate cache
-          _cache.remove('all_users_with_payments');
-          _cacheTimestamps.remove('all_users_with_payments');
+          final cacheKey = 'all_users_with_payments_$routerId';
+          _cache.remove(cacheKey);
+          _cacheTimestamps.remove(cacheKey);
         }
         return decoded;
       } else {
@@ -1123,8 +1127,9 @@ class ApiService {
           );
 
           // Invalidate cache
-          _cache.remove('all_users_with_payments');
-          _cacheTimestamps.remove('all_users_with_payments');
+          final cacheKey = 'all_users_with_payments_$routerId';
+          _cache.remove(cacheKey);
+          _cacheTimestamps.remove(cacheKey);
         }
         return decoded;
       } else {

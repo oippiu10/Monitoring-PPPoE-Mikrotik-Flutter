@@ -6,6 +6,8 @@ import '../services/config_service.dart';
 import '../services/api_service.dart';
 import '../services/genieacs_config_service.dart';
 import '../services/genieacs_service.dart';
+import '../services/update_service.dart';
+import '../widgets/update_dialog.dart';
 
 class InitialConfigScreen extends StatefulWidget {
   const InitialConfigScreen({super.key});
@@ -884,10 +886,210 @@ class _InitialConfigScreenState extends State<InitialConfigScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 24),
+
+                    // App Settings Section
+                    Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.palette,
+                                  color: Colors.blue,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'App Settings',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            SwitchListTile(
+                              title: Text(
+                                'Dark Mode',
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Mengaktifkan tema gelap',
+                                style: TextStyle(
+                                  color:
+                                      isDark ? Colors.white70 : Colors.black54,
+                                ),
+                              ),
+                              value: isDark,
+                              onChanged: (bool value) {
+                                themeProvider.toggleTheme();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // App Update Section
+                    Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.system_update,
+                                  color: Colors.blue,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'App Update',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Cek ketersediaan update aplikasi terbaru',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color:
+                                    isDark ? Colors.white70 : Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildUpdateCheckButton(isDark),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
       ),
     );
+  }
+
+  Widget _buildUpdateCheckButton(bool isDark) {
+    return InkWell(
+      onTap: _checkForUpdates,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isDark ? Colors.white24 : Colors.black12,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.system_update,
+              size: 20,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Check for Updates',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            const Spacer(),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      // Show loading dialog
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Check for updates
+      final updateInfo = await UpdateService.checkForUpdate();
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show update dialog if available
+      if (updateInfo.updateAvailable && mounted) {
+        await showDialog(
+          context: context,
+          builder: (context) => UpdateDialog(
+            updateInfo: updateInfo,
+            isRequired: updateInfo.updateRequired,
+          ),
+        );
+      } else if (mounted) {
+        // Already up to date
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Aplikasi sudah menggunakan versi terbaru!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memeriksa update: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

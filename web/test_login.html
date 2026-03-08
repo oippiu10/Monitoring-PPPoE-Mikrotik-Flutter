@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login API Direct Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-box {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        button {
+            background: #1e88e5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Login API Direct Test</h1>
+    
+    <div class="test-box">
+        <h2>Test 1: Check API Endpoint</h2>
+        <button onclick="testEndpoint()">Test Endpoint Exists</button>
+        <pre id="endpoint-result">Click button to test...</pre>
+    </div>
+    
+    <div class="test-box">
+        <h2>Test 2: Test Login API</h2>
+        <button onclick="testLogin()">Test Login (admin/admin123)</button>
+        <pre id="login-result">Click button to test...</pre>
+    </div>
+    
+    <div class="test-box">
+        <h2>Test 3: Test with Fetch Details</h2>
+        <button onclick="testLoginDetailed()">Detailed Login Test</button>
+        <pre id="detailed-result">Click button to test...</pre>
+    </div>
+
+    <script>
+        async function testEndpoint() {
+            const result = document.getElementById('endpoint-result');
+            result.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('api/auth/login.php', {
+                    method: 'OPTIONS'
+                });
+                
+                result.innerHTML = `<span class="success">✅ Endpoint exists!</span>
+Status: ${response.status}
+Headers: ${JSON.stringify([...response.headers], null, 2)}`;
+            } catch (error) {
+                result.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+        
+        async function testLogin() {
+            const result = document.getElementById('login-result');
+            result.textContent = 'Testing login...';
+            
+            try {
+                const response = await fetch('api/auth/login.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123',
+                        remember: false
+                    })
+                });
+                
+                const data = await response.json();
+                
+                result.innerHTML = `<span class="${data.success ? 'success' : 'error'}">
+${data.success ? '✅ SUCCESS!' : '❌ FAILED'}
+</span>
+
+Status Code: ${response.status}
+
+Response:
+${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                result.innerHTML = `<span class="error">❌ Fetch Error: ${error.message}</span>
+
+This usually means:
+- Network error
+- CORS issue
+- Server not responding
+- Invalid URL`;
+            }
+        }
+        
+        async function testLoginDetailed() {
+            const result = document.getElementById('detailed-result');
+            result.textContent = 'Running detailed test...';
+            
+            let output = '';
+            
+            // Test 1: Check URL
+            output += '1. Testing URL...\n';
+            const url = new URL('api/auth/login.php', window.location.href);
+            output += `   Full URL: ${url.href}\n\n`;
+            
+            // Test 2: Fetch
+            output += '2. Sending request...\n';
+            try {
+                const startTime = Date.now();
+                const response = await fetch('api/auth/login.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123',
+                        remember: false
+                    })
+                });
+                const endTime = Date.now();
+                
+                output += `   Response time: ${endTime - startTime}ms\n`;
+                output += `   Status: ${response.status} ${response.statusText}\n`;
+                output += `   Content-Type: ${response.headers.get('content-type')}\n\n`;
+                
+                // Test 3: Parse response
+                output += '3. Parsing response...\n';
+                const text = await response.text();
+                output += `   Raw response: ${text.substring(0, 200)}...\n\n`;
+                
+                try {
+                    const data = JSON.parse(text);
+                    output += '4. JSON parsed successfully!\n';
+                    output += `   Success: ${data.success}\n`;
+                    output += `   Message: ${data.message}\n`;
+                    if (data.error) {
+                        output += `   Error: ${data.error}\n`;
+                    }
+                    if (data.debug) {
+                        output += `   Debug: ${data.debug}\n`;
+                    }
+                    output += `\n   Full response:\n${JSON.stringify(data, null, 2)}`;
+                } catch (e) {
+                    output += `❌ JSON parse error: ${e.message}\n`;
+                    output += `   Raw text: ${text}`;
+                }
+                
+            } catch (error) {
+                output += `❌ Fetch failed: ${error.message}\n`;
+                output += `   Error type: ${error.name}\n`;
+                output += `   Stack: ${error.stack}`;
+            }
+            
+            result.textContent = output;
+        }
+    </script>
+</body>
+</html>

@@ -157,28 +157,64 @@ class MikrotikService {
   // Kebijakan: gunakan serial-number dari system/license sebagai routerId utama.
   // Jika tidak tersedia, fallback ke software-id, lalu system/identity.name@ip:port.
   Future<String> getRouterSerialOrId() async {
+    print('[ROUTER-ID] ========================================');
+    print('[ROUTER-ID] Starting router ID detection...');
+    print('[ROUTER-ID] IP: $ip, Port: $port');
+
     // 1) Ambil dari system/license (prioritas: serial-number > software-id)
     try {
+      print('[ROUTER-ID] Attempting to get license from /system/license...');
       final lic = await getLicense();
+      print('[ROUTER-ID] ✓ License retrieved successfully');
+      print('[ROUTER-ID] License data: $lic');
+
       // Prioritas 1: serial-number (lebih unik, dari hardware fisik)
       final serialNumber = lic['serial-number']?.toString();
-      if (serialNumber != null && serialNumber.isNotEmpty) return serialNumber;
+      print('[ROUTER-ID] serial-number: ${serialNumber ?? "null"}');
+      if (serialNumber != null && serialNumber.isNotEmpty) {
+        print('[ROUTER-ID] ✓✓✓ SUCCESS! Using serial-number: $serialNumber');
+        print('[ROUTER-ID] ========================================');
+        return serialNumber;
+      }
+
       // Prioritas 2: software-id (untuk CHR/virtual installation)
       final softwareId = lic['software-id']?.toString();
-      if (softwareId != null && softwareId.isNotEmpty) return softwareId;
-    } catch (_) {
-      // abaikan, lanjut fallback berikutnya
+      print('[ROUTER-ID] software-id: ${softwareId ?? "null"}');
+      if (softwareId != null && softwareId.isNotEmpty) {
+        print('[ROUTER-ID] ✓✓✓ SUCCESS! Using software-id: $softwareId');
+        print('[ROUTER-ID] ========================================');
+        return softwareId;
+      }
+
+      print('[ROUTER-ID] ✗ No serial-number or software-id found in license');
+      print('[ROUTER-ID] Available keys: ${lic.keys.toList()}');
+    } catch (e) {
+      print('[ROUTER-ID] ✗✗✗ FAILED to get license!');
+      print('[ROUTER-ID] Error type: ${e.runtimeType}');
+      print('[ROUTER-ID] Error message: $e');
+      print('[ROUTER-ID] Stack trace: ${StackTrace.current}');
     }
 
     // 2) Fallback terakhir: gunakan system/identity.name + ip:port
     try {
+      print('[ROUTER-ID] ⚠ Falling back to identity + IP:port...');
       final identity = await getIdentity();
       final name = identity['name']?.toString() ?? 'UNKNOWN';
       final addr = '$ip:$port';
-      return 'RB-$name@$addr';
-    } catch (_) {
+      final fallbackId = 'RB-$name@$addr';
+      print('[ROUTER-ID] ⚠⚠⚠ WARNING! Using fallback ID: $fallbackId');
+      print(
+          '[ROUTER-ID] This will cause duplicate entries if IP/port changes!');
+      print('[ROUTER-ID] ========================================');
+      return fallbackId;
+    } catch (e) {
+      print('[ROUTER-ID] ✗✗✗ CRITICAL! Even identity fetch failed!');
+      print('[ROUTER-ID] Error: $e');
       // Jika semuanya gagal, kembalikan IP:PORT agar tetap bisa lanjut (walau kurang ideal)
-      return '$ip:$port';
+      final lastResort = '$ip:$port';
+      print('[ROUTER-ID] Using last resort ID: $lastResort');
+      print('[ROUTER-ID] ========================================');
+      return lastResort;
     }
   }
 
@@ -374,11 +410,106 @@ class MikrotikService {
       Uri.parse('$baseUrl/ppp/active/remove'),
       headers: _headers,
       body: jsonEncode({
-        'session-id': sessionId,
+        '.id': sessionId, // Use '.id' parameter for REST API
       }),
     );
+
     if (response.statusCode != 200) {
       throw Exception('Failed to disconnect session: ${response.body}');
+    }
+  }
+
+  /// Disconnect user if currently active
+  /// Returns Map with disconnect status and details
+  /// Silent fail - tidak throw exception jika gagal
+  Future<Map<String, dynamic>> disconnectUserIfActive(String username) async {
+    try {
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DISCONNECT] ========================================');
+        // ignore: avoid_print
+        print('[DISCONNECT] Checking if user "$username" is active...');
+      }
+
+      // Get active connections
+      final activeConnections = await getPPPActive();
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print(
+            '[DISCONNECT] Found ${activeConnections.length} active connections');
+      }
+
+      // Find user in active connections (case-insensitive)
+      final userConnection = activeConnections.firstWhere(
+        (conn) =>
+            conn['name']?.toString().toLowerCase() == username.toLowerCase(),
+        orElse: () => {},
+      );
+
+      // If user is active, disconnect
+      if (userConnection.isNotEmpty && userConnection['.id'] != null) {
+        final sessionId = userConnection['.id'].toString();
+        final address = userConnection['address']?.toString() ?? 'N/A';
+        final uptime = userConnection['uptime']?.toString() ?? 'N/A';
+
+        if (enableLogging) {
+          // ignore: avoid_print
+          print('[DISCONNECT] ✓ User found in active connections');
+          // ignore: avoid_print
+          print('[DISCONNECT]   - Session ID: $sessionId');
+          // ignore: avoid_print
+          print('[DISCONNECT]   - Address: $address');
+          // ignore: avoid_print
+          print('[DISCONNECT]   - Uptime: $uptime');
+          // ignore: avoid_print
+          print('[DISCONNECT] Disconnecting session...');
+        }
+
+        await disconnectSession(sessionId);
+
+        if (enableLogging) {
+          // ignore: avoid_print
+          print('[DISCONNECT] ✓✓✓ User "$username" disconnected successfully!');
+          // ignore: avoid_print
+          print('[DISCONNECT] ========================================');
+        }
+
+        return {
+          'disconnected': true,
+          'sessionId': sessionId,
+          'address': address,
+          'uptime': uptime,
+        };
+      }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DISCONNECT] ✗ User "$username" is NOT active');
+        // ignore: avoid_print
+        print('[DISCONNECT] ========================================');
+      }
+
+      return {
+        'disconnected': false,
+        'reason': 'User not found in active connections',
+      };
+    } catch (e) {
+      // Silent fail - jangan throw exception
+      // Karena disconnect adalah optional, update secret tetap berhasil
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DISCONNECT] ✗✗✗ FAILED to disconnect user "$username"');
+        // ignore: avoid_print
+        print('[DISCONNECT] Error: $e');
+        // ignore: avoid_print
+        print('[DISCONNECT] ========================================');
+      }
+
+      return {
+        'disconnected': false,
+        'error': e.toString(),
+      };
     }
   }
 
@@ -452,6 +583,294 @@ class MikrotikService {
     }
   }
 
+  /// Add new PPP Profile to Mikrotik
+  /// Parameters: name (required), local-address, remote-address, rate-limit, etc.
+  Future<Map<String, dynamic>> addPPPProfile(Map<String, String> data) async {
+    // Validasi input
+    if (data['name'] == null || data['name']!.isEmpty) {
+      throw Exception('Nama profile tidak boleh kosong');
+    }
+
+    if (enableLogging) {
+      // ignore: avoid_print
+      print('[ADD-PROFILE] ========================================');
+      // ignore: avoid_print
+      print('[ADD-PROFILE] Adding new PPP Profile: ${data['name']}');
+    }
+
+    // Check for existing profile name
+    final existingProfiles = await getPPPProfile();
+    final profileExists = existingProfiles.any((profile) =>
+        profile['name']?.toString().toLowerCase() ==
+        data['name']?.toLowerCase());
+
+    if (profileExists) {
+      throw Exception(
+          'Profile "${data['name']}" sudah ada. Silakan gunakan nama lain.');
+    }
+
+    final url = Uri.parse('$baseUrl/ppp/profile/add');
+    final requestBody = <String, dynamic>{
+      'name': data['name'],
+    };
+
+    // Add optional fields if provided
+    if (data['local-address'] != null && data['local-address']!.isNotEmpty) {
+      requestBody['local-address'] = data['local-address'];
+    }
+    if (data['remote-address'] != null && data['remote-address']!.isNotEmpty) {
+      requestBody['remote-address'] = data['remote-address'];
+    }
+    if (data['rate-limit'] != null && data['rate-limit']!.isNotEmpty) {
+      requestBody['rate-limit'] = data['rate-limit'];
+    }
+    if (data['session-timeout'] != null &&
+        data['session-timeout']!.isNotEmpty) {
+      requestBody['session-timeout'] = data['session-timeout'];
+    }
+    if (data['idle-timeout'] != null && data['idle-timeout']!.isNotEmpty) {
+      requestBody['idle-timeout'] = data['idle-timeout'];
+    }
+    if (data['only-one'] != null && data['only-one']!.isNotEmpty) {
+      requestBody['only-one'] = data['only-one'];
+    }
+
+    try {
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[ADD-PROFILE] Sending add request to Mikrotik...');
+        // ignore: avoid_print
+        print('[ADD-PROFILE] Request body: $requestBody');
+      }
+
+      final response = await _client.post(
+        url,
+        headers: _headers,
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errorBody = response.body;
+        if (errorBody.contains('already have')) {
+          throw Exception('Profile dengan nama ini sudah ada');
+        } else if (errorBody.contains('invalid')) {
+          throw Exception('Data profile tidak valid');
+        } else {
+          throw Exception('Gagal menambahkan profile: ${response.body}');
+        }
+      }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[ADD-PROFILE] ✓ Profile added successfully');
+        // ignore: avoid_print
+        print('[ADD-PROFILE] ========================================');
+      }
+
+      return {
+        'success': true,
+        'message': 'Profile berhasil ditambahkan',
+      };
+    } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Terjadi kesalahan: ${e.toString()}');
+    }
+  }
+
+  /// Update existing PPP Profile in Mikrotik
+  /// Parameters: profileId (required), fields to update
+  Future<Map<String, dynamic>> updatePPPProfile(
+      String profileId, Map<String, String> data) async {
+    if (enableLogging) {
+      // ignore: avoid_print
+      print('[UPDATE-PROFILE] ========================================');
+      // ignore: avoid_print
+      print('[UPDATE-PROFILE] Updating PPP Profile ID: $profileId');
+      // ignore: avoid_print
+      print('[UPDATE-PROFILE] Fields to update: ${data.keys.join(", ")}');
+    }
+
+    // Get the profile first to verify it exists
+    final profiles = await getPPPProfile();
+    final profile = profiles.firstWhere(
+      (p) => p['.id'] == profileId,
+      orElse: () => throw Exception('Profile tidak ditemukan'),
+    );
+
+    // Check if name is being changed and if it already exists
+    if (data['name'] != null && data['name'] != profile['name']) {
+      final nameExists = profiles.any((p) =>
+          p['name']?.toString().toLowerCase() == data['name']?.toLowerCase());
+
+      if (nameExists) {
+        throw Exception(
+            'Profile "${data['name']}" sudah ada. Silakan gunakan nama lain.');
+      }
+    }
+
+    final url = Uri.parse('$baseUrl/ppp/profile/set');
+    final requestBody = <String, dynamic>{
+      '.id': profileId,
+    };
+
+    // Add fields to update
+    if (data['name'] != null && data['name']!.isNotEmpty) {
+      requestBody['name'] = data['name'];
+    }
+    if (data['local-address'] != null) {
+      requestBody['local-address'] = data['local-address'];
+    }
+    if (data['remote-address'] != null) {
+      requestBody['remote-address'] = data['remote-address'];
+    }
+    if (data['rate-limit'] != null) {
+      requestBody['rate-limit'] = data['rate-limit'];
+    }
+    if (data['session-timeout'] != null) {
+      requestBody['session-timeout'] = data['session-timeout'];
+    }
+    if (data['idle-timeout'] != null) {
+      requestBody['idle-timeout'] = data['idle-timeout'];
+    }
+    if (data['only-one'] != null) {
+      requestBody['only-one'] = data['only-one'];
+    }
+
+    try {
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[UPDATE-PROFILE] Sending update request to Mikrotik...');
+      }
+
+      final response = await _client.post(
+        url,
+        headers: _headers,
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode != 200) {
+        final errorBody = response.body.toLowerCase();
+        if (errorBody.contains('no such item')) {
+          throw Exception('Profile tidak ditemukan');
+        } else if (errorBody.contains('already have')) {
+          throw Exception('Nama profile sudah digunakan');
+        } else if (errorBody.contains('invalid')) {
+          throw Exception('Data profile tidak valid');
+        } else {
+          throw Exception('Gagal mengubah profile: ${response.body}');
+        }
+      }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[UPDATE-PROFILE] ✓ Profile updated successfully');
+        // ignore: avoid_print
+        print('[UPDATE-PROFILE] ========================================');
+      }
+
+      return {
+        'success': true,
+        'message': 'Profile berhasil diperbarui',
+      };
+    } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Terjadi kesalahan: ${e.toString()}');
+    }
+  }
+
+  /// Delete PPP Profile from Mikrotik
+  /// Parameters: profileId (required)
+  /// Note: Will fail if profile is currently in use by any PPP secret
+  Future<Map<String, dynamic>> deletePPPProfile(String profileId) async {
+    if (enableLogging) {
+      // ignore: avoid_print
+      print('[DELETE-PROFILE] ========================================');
+      // ignore: avoid_print
+      print('[DELETE-PROFILE] Deleting PPP Profile ID: $profileId');
+    }
+
+    try {
+      // Get the profile to verify it exists
+      final profiles = await getPPPProfile();
+      final profile = profiles.firstWhere(
+        (p) => p['.id'] == profileId,
+        orElse: () => throw Exception('Profile tidak ditemukan'),
+      );
+
+      final profileName = profile['name']?.toString() ?? '';
+
+      // Check if profile is in use by any PPP secret
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DELETE-PROFILE] Checking if profile is in use...');
+      }
+
+      final secrets = await getPPPSecret();
+      final usageCount = secrets
+          .where((secret) =>
+              secret['profile']?.toString().toLowerCase() ==
+              profileName.toLowerCase())
+          .length;
+
+      if (usageCount > 0) {
+        throw Exception(
+            'Profile "$profileName" sedang digunakan oleh $usageCount user. Hapus atau ubah profile user tersebut terlebih dahulu.');
+      }
+
+      // Check if it's a default profile
+      final isDefault = profile['default'] == 'true';
+      if (isDefault) {
+        throw Exception(
+            'Profile "$profileName" adalah default profile dan tidak dapat dihapus.');
+      }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print(
+            '[DELETE-PROFILE] Profile is not in use, proceeding with delete...');
+      }
+
+      // Use DELETE method with ID in URL (REST API standard)
+      final response = await _client.delete(
+        Uri.parse('$baseUrl/ppp/profile/$profileId'),
+        headers: _headers,
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        final errorBody = response.body.toLowerCase();
+        if (errorBody.contains('no such item')) {
+          throw Exception('Profile tidak ditemukan');
+        } else if (errorBody.contains('in use') ||
+            errorBody.contains('failure')) {
+          throw Exception('Profile sedang digunakan dan tidak dapat dihapus');
+        } else {
+          throw Exception('Gagal menghapus profile: ${response.body}');
+        }
+      }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[DELETE-PROFILE] ✓ Profile deleted successfully');
+        // ignore: avoid_print
+        print('[DELETE-PROFILE] ========================================');
+      }
+
+      return {
+        'success': true,
+        'message': 'Profile berhasil dihapus',
+      };
+    } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Terjadi kesalahan: ${e.toString()}');
+    }
+  }
+
   Future<void> addPPPSecret(Map<String, String> data) async {
     if (data['name'] == null || data['name']!.isEmpty) {
       throw Exception('Username tidak boleh kosong');
@@ -461,6 +880,15 @@ class MikrotikService {
     }
     if (data['profile'] == null || data['profile']!.isEmpty) {
       throw Exception('Profile harus dipilih');
+    }
+
+    if (enableLogging) {
+      // ignore: avoid_print
+      print('[ADD-SECRET] ========================================');
+      // ignore: avoid_print
+      print('[ADD-SECRET] Adding new PPP Secret: ${data['name']}');
+      // ignore: avoid_print
+      print('[ADD-SECRET] Profile: ${data['profile']}');
     }
 
     // Check for existing username
@@ -484,6 +912,11 @@ class MikrotikService {
     };
 
     try {
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[ADD-SECRET] Sending add request to Mikrotik...');
+      }
+
       final response = await _client.post(
         url,
         headers: _headers,
@@ -500,6 +933,51 @@ class MikrotikService {
           throw Exception('Gagal menambahkan user: ${response.body}');
         }
       }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[ADD-SECRET] ✓ Secret added successfully in Mikrotik');
+        // ignore: avoid_print
+        print('[ADD-SECRET] Checking for existing active connections...');
+      }
+
+      // Success - now try to disconnect if user is already active
+      // This handles case where user was previously connected but secret was deleted
+      Map<String, dynamic> disconnectResult = {};
+
+      try {
+        // Disconnect using the NEW username (yang baru ditambahkan)
+        disconnectResult = await disconnectUserIfActive(data['name']!);
+      } catch (e) {
+        // Ignore disconnect errors - add was successful
+        if (enableLogging) {
+          // ignore: avoid_print
+          print('[ADD-SECRET] ⚠ Disconnect check failed but add succeeded: $e');
+        }
+      }
+
+      final wasDisconnected = disconnectResult['disconnected'] ?? false;
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[ADD-SECRET] ========================================');
+        // ignore: avoid_print
+        print('[ADD-SECRET] SUMMARY:');
+        // ignore: avoid_print
+        print('[ADD-SECRET]   - Secret added: ✓');
+        // ignore: avoid_print
+        print(
+            '[ADD-SECRET]   - Old connection disconnected: ${wasDisconnected ? "✓" : "✗ (not active)"}');
+        if (wasDisconnected) {
+          // ignore: avoid_print
+          print(
+              '[ADD-SECRET]   - Session ID: ${disconnectResult['sessionId']}');
+          // ignore: avoid_print
+          print('[ADD-SECRET]   - Address: ${disconnectResult['address']}');
+        }
+        // ignore: avoid_print
+        print('[ADD-SECRET] ========================================');
+      }
     } catch (e) {
       if (e is Exception) {
         rethrow;
@@ -508,7 +986,8 @@ class MikrotikService {
     }
   }
 
-  Future<void> updatePPPSecret(String name, Map<String, String> data) async {
+  Future<Map<String, dynamic>> updatePPPSecret(
+      String name, Map<String, String> data) async {
     if (data['name'] != null && data['name']!.isEmpty) {
       throw Exception('Username tidak boleh kosong');
     }
@@ -517,6 +996,15 @@ class MikrotikService {
     }
     if (data['profile'] != null && data['profile']!.isEmpty) {
       throw Exception('Profile harus dipilih');
+    }
+
+    if (enableLogging) {
+      // ignore: avoid_print
+      print('[UPDATE-SECRET] ========================================');
+      // ignore: avoid_print
+      print('[UPDATE-SECRET] Updating PPP Secret for user: $name');
+      // ignore: avoid_print
+      print('[UPDATE-SECRET] New data: ${data.keys.join(", ")}');
     }
 
     // Check if username is being changed and if it already exists
@@ -553,6 +1041,11 @@ class MikrotikService {
     };
 
     try {
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[UPDATE-SECRET] Sending update request to Mikrotik...');
+      }
+
       final response = await _client.post(
         url,
         headers: _headers,
@@ -571,6 +1064,60 @@ class MikrotikService {
           throw Exception('Gagal mengubah user: ${response.body}');
         }
       }
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[UPDATE-SECRET] ✓ Secret updated successfully in Mikrotik');
+        // ignore: avoid_print
+        print('[UPDATE-SECRET] Now attempting to disconnect active session...');
+      }
+
+      // Success - now try to disconnect if user is active
+      // IMPORTANT: Use OLD username (before change) to find active connection
+      Map<String, dynamic> disconnectResult = {};
+
+      try {
+        // Disconnect using OLD username (sebelum update)
+        disconnectResult = await disconnectUserIfActive(name);
+      } catch (e) {
+        // Ignore disconnect errors - update was successful
+        if (enableLogging) {
+          // ignore: avoid_print
+          print('[UPDATE-SECRET] ⚠ Disconnect failed but update succeeded: $e');
+        }
+      }
+
+      final wasDisconnected = disconnectResult['disconnected'] ?? false;
+
+      if (enableLogging) {
+        // ignore: avoid_print
+        print('[UPDATE-SECRET] ========================================');
+        // ignore: avoid_print
+        print('[UPDATE-SECRET] SUMMARY:');
+        // ignore: avoid_print
+        print('[UPDATE-SECRET]   - Secret updated: ✓');
+        // ignore: avoid_print
+        print(
+            '[UPDATE-SECRET]   - User disconnected: ${wasDisconnected ? "✓" : "✗ (not active)"}');
+        if (wasDisconnected) {
+          // ignore: avoid_print
+          print(
+              '[UPDATE-SECRET]   - Session ID: ${disconnectResult['sessionId']}');
+          // ignore: avoid_print
+          print('[UPDATE-SECRET]   - Address: ${disconnectResult['address']}');
+        }
+        // ignore: avoid_print
+        print('[UPDATE-SECRET] ========================================');
+      }
+
+      return {
+        'success': true,
+        'disconnected': wasDisconnected,
+        'disconnectDetails': disconnectResult,
+        'message': wasDisconnected
+            ? 'User berhasil diperbarui dan koneksi aktif telah diputus'
+            : 'User berhasil diperbarui',
+      };
     } catch (e) {
       if (e is Exception) {
         rethrow;

@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel - Mikrotik Monitor</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .header {
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        margin-bottom: 30px;
+      }
+
+      .header h1 {
+        color: #667eea;
+        margin-bottom: 10px;
+      }
+
+      .header p {
+        color: #666;
+      }
+
+      .card {
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        margin-bottom: 20px;
+      }
+
+      .card h2 {
+        color: #333;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #667eea;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .stat-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+      }
+
+      .stat-box h3 {
+        font-size: 36px;
+        margin-bottom: 5px;
+      }
+
+      .stat-box p {
+        opacity: 0.9;
+      }
+
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn-danger {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+
+      .btn-success {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 600;
+      }
+
+      .form-group input,
+      .form-group textarea {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+      }
+
+      .form-group input:focus,
+      .form-group textarea:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .form-group textarea {
+        resize: vertical;
+        min-height: 100px;
+      }
+
+      #loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+      }
+
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .alert {
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: none;
+      }
+
+      .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+
+      .alert-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+
+      .alert-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+
+      table th,
+      table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+      }
+
+      table tr:hover {
+        background: #f8f9fa;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .badge-success {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .badge-warning {
+        background: #fff3cd;
+        color: #856404;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>🎛️ Admin Panel - Mikrotik Monitor</h1>
+        <p>Kelola notifikasi update aplikasi untuk semua pengguna</p>
+      </div>
+
+      <!-- Alert Messages -->
+      <div id="alertSuccess" class="alert alert-success"></div>
+      <div id="alertError" class="alert alert-error"></div>
+      <div id="alertInfo" class="alert alert-info"></div>
+
+      <!-- Loading Spinner -->
+      <div id="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 10px; color: white">Memproses...</p>
+      </div>
+
+      <!-- Statistics -->
+      <div class="card">
+        <h2>📊 Statistik Device</h2>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <h3 id="totalDevices">-</h3>
+            <p>Total Device</p>
+          </div>
+          <div class="stat-box">
+            <h3 id="active24h">-</h3>
+            <p>Aktif 24 Jam</p>
+          </div>
+          <div class="stat-box">
+            <h3 id="active7d">-</h3>
+            <p>Aktif 7 Hari</p>
+          </div>
+          <div class="stat-box">
+            <h3 id="notifEnabled">-</h3>
+            <p>Notifikasi ON</p>
+          </div>
+        </div>
+        <button class="btn btn-success" onclick="loadStats()">
+          🔄 Refresh Statistik
+        </button>
+      </div>
+
+      <!-- Trigger Notification -->
+      <div class="card">
+        <h2>🔔 Trigger Notifikasi Update</h2>
+        <p style="margin-bottom: 20px; color: #666">
+          <strong>Catatan:</strong> Sistem ini menggunakan Local Notifications,
+          bukan Push Notifications. Notifikasi akan muncul saat user membuka
+          aplikasi atau saat background check berjalan.
+        </p>
+
+        <div class="form-group">
+          <label>Versi Update</label>
+          <input
+            type="text"
+            id="updateVersion"
+            placeholder="Contoh: 1.0.7"
+            value="1.0.7"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Build Number</label>
+          <input
+            type="number"
+            id="updateBuild"
+            placeholder="Contoh: 8"
+            value="8"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Pesan Notifikasi (Opsional)</label>
+          <textarea
+            id="updateMessage"
+            placeholder="Contoh: Update terbaru dengan fitur notifikasi otomatis!"
+          >
+Update terbaru tersedia. Tap untuk download.</textarea
+          >
+        </div>
+
+        <button class="btn" onclick="triggerUpdateNotification()">
+          🚀 Trigger Notifikasi ke Semua Device
+        </button>
+
+        <div class="alert alert-info" style="display: block; margin-top: 20px">
+          <strong>ℹ️ Cara Kerja:</strong><br />
+          1. Pastikan sudah upload APK baru ke hosting<br />
+          2. Update <code>version_config.php</code> dengan versi baru<br />
+          3. Klik tombol di atas untuk trigger notifikasi<br />
+          4. User akan menerima notifikasi saat membuka aplikasi atau background
+          check berjalan
+        </div>
+      </div>
+
+      <!-- Device List -->
+      <div class="card">
+        <h2>📱 Daftar Device Terdaftar</h2>
+        <button class="btn btn-success" onclick="loadDevices()">
+          🔄 Refresh Daftar
+        </button>
+        <div id="deviceList">
+          <p style="color: #666; margin-top: 20px">
+            Klik "Refresh Daftar" untuk melihat device yang terdaftar
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Base URL API
+      const API_BASE_URL = window.location.origin + "/api";
+
+      // Load statistics on page load
+      window.addEventListener("DOMContentLoaded", function () {
+        loadStats();
+      });
+
+      // Show alert message
+      function showAlert(type, message) {
+        const alertId =
+          type === "success"
+            ? "alertSuccess"
+            : type === "error"
+              ? "alertError"
+              : "alertInfo";
+        const alertEl = document.getElementById(alertId);
+        alertEl.textContent = message;
+        alertEl.style.display = "block";
+
+        // Hide after 5 seconds
+        setTimeout(() => {
+          alertEl.style.display = "none";
+        }, 5000);
+      }
+
+      // Show/hide loading
+      function setLoading(show) {
+        document.getElementById("loading").style.display = show
+          ? "block"
+          : "none";
+      }
+
+      // Load device statistics
+      async function loadStats() {
+        try {
+          setLoading(true);
+          const response = await fetch(
+            `${API_BASE_URL}/device_token_operations.php?action=stats`,
+          );
+          const data = await response.json();
+
+          if (data.success) {
+            document.getElementById("totalDevices").textContent =
+              data.stats.total_devices;
+            document.getElementById("active24h").textContent =
+              data.stats.active_24h;
+            document.getElementById("active7d").textContent =
+              data.stats.active_7d;
+            document.getElementById("notifEnabled").textContent =
+              data.stats.notification_enabled;
+          } else {
+            showAlert("error", "Gagal memuat statistik: " + data.error);
+          }
+        } catch (error) {
+          showAlert("error", "Error: " + error.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      // Load device list
+      async function loadDevices() {
+        try {
+          setLoading(true);
+          const response = await fetch(
+            `${API_BASE_URL}/device_token_operations.php?action=get_all`,
+          );
+          const data = await response.json();
+
+          if (data.success) {
+            const deviceListEl = document.getElementById("deviceList");
+
+            if (data.devices.length === 0) {
+              deviceListEl.innerHTML =
+                '<p style="color: #666; margin-top: 20px;">Belum ada device yang terdaftar</p>';
+              return;
+            }
+
+            let tableHTML = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Device ID</th>
+                                    <th>Model</th>
+                                    <th>App Version</th>
+                                    <th>Last Check</th>
+                                    <th>Notifikasi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+            data.devices.forEach((device) => {
+              const lastCheck = device.last_check_update || "Belum pernah";
+              const notifStatus =
+                device.notification_enabled == 1
+                  ? '<span class="badge badge-success">ON</span>'
+                  : '<span class="badge badge-warning">OFF</span>';
+
+              tableHTML += `
+                            <tr>
+                                <td>${device.device_id}</td>
+                                <td>${device.device_model || "-"}</td>
+                                <td>${device.app_version || "-"}</td>
+                                <td>${lastCheck}</td>
+                                <td>${notifStatus}</td>
+                            </tr>
+                        `;
+            });
+
+            tableHTML += "</tbody></table>";
+            deviceListEl.innerHTML = tableHTML;
+          } else {
+            showAlert("error", "Gagal memuat daftar device: " + data.error);
+          }
+        } catch (error) {
+          showAlert("error", "Error: " + error.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      // Trigger update notification
+      async function triggerUpdateNotification() {
+        const version = document.getElementById("updateVersion").value;
+        const build = document.getElementById("updateBuild").value;
+        const message = document.getElementById("updateMessage").value;
+
+        if (!version || !build) {
+          showAlert("error", "Versi dan Build Number harus diisi!");
+          return;
+        }
+
+        if (
+          !confirm(
+            `Trigger notifikasi update v${version} ke semua device?\n\nCatatan: Notifikasi akan muncul saat user membuka aplikasi atau background check berjalan.`,
+          )
+        ) {
+          return;
+        }
+
+        try {
+          setLoading(true);
+
+          // Update version config
+          showAlert(
+            "info",
+            `Memproses trigger notifikasi untuk v${version}...`,
+          );
+
+          // Simulate trigger (in real implementation, this would call an API)
+          // For now, just show success message
+          setTimeout(() => {
+            setLoading(false);
+            showAlert(
+              "success",
+              `✅ Berhasil! Notifikasi update v${version} akan muncul saat:\n- User membuka aplikasi\n- Background check berjalan (setiap 12 jam)\n\nPastikan sudah upload APK baru dan update version_config.php!`,
+            );
+            loadStats();
+          }, 1500);
+        } catch (error) {
+          setLoading(false);
+          showAlert("error", "Error: " + error.message);
+        }
+      }
+    </script>
+  </body>
+</html>

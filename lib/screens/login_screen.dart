@@ -566,22 +566,21 @@ Solusi:
         }
       }
 
-      // Save credentials
+      // Save credentials - ALWAYS save connection info, conditionally save password
+      // This ensures the form is pre-filled after logout for better UX
+      // while respecting the user's "Remember Me" preference for password security
+      await prefs.setString('ip', ip);
+      await prefs.setString('port', port);
+      await prefs.setString('username', username);
+      await prefs.setBool('useNativeApi', _useNativeApi);
+      await prefs.setBool('rememberMe', _rememberMe);
+
       if (_rememberMe) {
-        await prefs.setString('ip', ip);
-        await prefs.setString('port', port);
-        await prefs.setString('username', username);
+        // Only save password if Remember Me is checked
         await prefs.setString('password', password);
-        await prefs.setBool('rememberMe', true);
-        await prefs.setBool('useNativeApi', _useNativeApi);
       } else {
-        // Only remove specific keys, DO NOT clear all prefs (which would wipe saved logins)
-        await prefs.remove('ip');
-        await prefs.remove('port');
-        await prefs.remove('username');
+        // Clear password if Remember Me is unchecked for security
         await prefs.remove('password');
-        await prefs.remove('rememberMe');
-        await prefs.remove('useNativeApi');
       }
 
       // Simpan session router secara global
@@ -666,8 +665,8 @@ Solusi:
       );
     } else {
       return ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
+        // Enable scrolling so only the list scrolls, not the entire card
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
         itemCount: _savedLogins.length,
         separatorBuilder: (context, index) => Divider(
@@ -949,247 +948,292 @@ Solusi:
                                   ],
                                 ),
                                 // Dynamic Content based on Tab
-                                GestureDetector(
-                                  onHorizontalDragEnd: (details) {
-                                    if (details.primaryVelocity! > 0) {
-                                      // Swipe Right -> Go to previous tab (Login)
-                                      if (_tabController.index > 0) {
-                                        _tabController.animateTo(
-                                            _tabController.index - 1);
+                                // Wrap with SizedBox to give fixed height and make header sticky
+                                SizedBox(
+                                  height:
+                                      MediaQuery.of(context).size.height * 0.5,
+                                  child: GestureDetector(
+                                    onHorizontalDragEnd: (details) {
+                                      if (details.primaryVelocity! > 0) {
+                                        // Swipe Right -> Go to previous tab (Login)
+                                        if (_tabController.index > 0) {
+                                          _tabController.animateTo(
+                                              _tabController.index - 1);
+                                        }
+                                      } else if (details.primaryVelocity! < 0) {
+                                        // Swipe Left -> Go to next tab (Saved)
+                                        if (_tabController.index <
+                                            _tabController.length - 1) {
+                                          _tabController.animateTo(
+                                              _tabController.index + 1);
+                                        }
                                       }
-                                    } else if (details.primaryVelocity! < 0) {
-                                      // Swipe Left -> Go to next tab (Saved)
-                                      if (_tabController.index <
-                                          _tabController.length - 1) {
-                                        _tabController.animateTo(
-                                            _tabController.index + 1);
-                                      }
-                                    }
-                                  },
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 300),
-                                    child: _tabController.index == 0
-                                        ? Padding(
-                                            key: const ValueKey('LoginTab'),
-                                            padding: const EdgeInsets.fromLTRB(
-                                                24, 0, 24, 0),
-                                            child: Form(
-                                              key: _formKey,
-                                              child: Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.start,
-                                                children: [
-                                                  const SizedBox(height: 24),
-                                                  Row(
+                                    },
+                                    child: AnimatedSwitcher(
+                                      duration:
+                                          const Duration(milliseconds: 300),
+                                      child: _tabController.index == 0
+                                          ? SingleChildScrollView(
+                                              key: const ValueKey('LoginTab'),
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.fromLTRB(
+                                                        24, 0, 24, 0),
+                                                child: Form(
+                                                  key: _formKey,
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment.start,
                                                     children: [
-                                                      Expanded(
-                                                        flex: 2,
-                                                        child: TextFormField(
-                                                          controller:
-                                                              _ipController,
-                                                          focusNode: _ipFocus,
-                                                          style:
-                                                              const TextStyle(
-                                                                  fontSize: 16),
-                                                          decoration:
-                                                              InputDecoration(
-                                                            labelText:
-                                                                'IP Address',
-                                                            prefixIcon:
-                                                                const Icon(
-                                                                    Icons.dns),
-                                                            border:
-                                                                OutlineInputBorder(
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          12),
+                                                      const SizedBox(
+                                                          height: 24),
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            flex: 2,
+                                                            child:
+                                                                TextFormField(
+                                                              controller:
+                                                                  _ipController,
+                                                              focusNode:
+                                                                  _ipFocus,
+                                                              style:
+                                                                  const TextStyle(
+                                                                      fontSize:
+                                                                          16),
+                                                              decoration:
+                                                                  InputDecoration(
+                                                                labelText:
+                                                                    'IP Address',
+                                                                prefixIcon:
+                                                                    const Icon(
+                                                                        Icons
+                                                                            .dns),
+                                                                border:
+                                                                    OutlineInputBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              12),
+                                                                ),
+                                                              ),
+                                                              validator:
+                                                                  (value) {
+                                                                if (value ==
+                                                                        null ||
+                                                                    value
+                                                                        .isEmpty) {
+                                                                  return 'IP wajib diisi';
+                                                                }
+                                                                return null;
+                                                              },
+                                                              onFieldSubmitted:
+                                                                  (_) {
+                                                                FocusScope.of(
+                                                                        context)
+                                                                    .requestFocus(
+                                                                        _portFocus);
+                                                              },
                                                             ),
                                                           ),
-                                                          validator: (value) {
-                                                            if (value == null ||
-                                                                value.isEmpty) {
-                                                              return 'IP wajib diisi';
-                                                            }
-                                                            return null;
-                                                          },
-                                                          onFieldSubmitted:
-                                                              (_) {
-                                                            FocusScope.of(
-                                                                    context)
-                                                                .requestFocus(
-                                                                    _portFocus);
-                                                          },
-                                                        ),
+                                                          const SizedBox(
+                                                              width: 12),
+                                                          Expanded(
+                                                            flex: 1,
+                                                            child:
+                                                                TextFormField(
+                                                              controller:
+                                                                  _portController,
+                                                              focusNode:
+                                                                  _portFocus,
+                                                              style:
+                                                                  const TextStyle(
+                                                                      fontSize:
+                                                                          16),
+                                                              keyboardType:
+                                                                  TextInputType
+                                                                      .number,
+                                                              decoration:
+                                                                  InputDecoration(
+                                                                labelText:
+                                                                    'Port',
+                                                                hintText:
+                                                                    '8728',
+                                                                border:
+                                                                    OutlineInputBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              12),
+                                                                ),
+                                                              ),
+                                                              validator:
+                                                                  (value) {
+                                                                if (value ==
+                                                                        null ||
+                                                                    value
+                                                                        .isEmpty) {
+                                                                  return 'Port wajib';
+                                                                }
+                                                                return null;
+                                                              },
+                                                              onFieldSubmitted:
+                                                                  (_) {
+                                                                FocusScope.of(
+                                                                        context)
+                                                                    .requestFocus(
+                                                                        _usernameFocus);
+                                                              },
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
-                                                      const SizedBox(width: 12),
-                                                      Expanded(
-                                                        flex: 1,
-                                                        child: TextFormField(
-                                                          controller:
-                                                              _portController,
-                                                          focusNode: _portFocus,
-                                                          style:
-                                                              const TextStyle(
-                                                                  fontSize: 16),
-                                                          keyboardType:
-                                                              TextInputType
-                                                                  .number,
-                                                          decoration:
-                                                              InputDecoration(
-                                                            labelText: 'Port',
-                                                            hintText: '8728',
-                                                            border:
-                                                                OutlineInputBorder(
+                                                      const SizedBox(
+                                                          height: 16),
+                                                      TextFormField(
+                                                        controller:
+                                                            _usernameController,
+                                                        focusNode:
+                                                            _usernameFocus,
+                                                        style: const TextStyle(
+                                                            fontSize: 16),
+                                                        decoration:
+                                                            InputDecoration(
+                                                          labelText: 'Username',
+                                                          prefixIcon:
+                                                              const Icon(
+                                                                  Icons.person),
+                                                          border:
+                                                              OutlineInputBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                          ),
+                                                        ),
+                                                        validator: (value) {
+                                                          if (value == null ||
+                                                              value.isEmpty) {
+                                                            return 'Username wajib diisi';
+                                                          }
+                                                          return null;
+                                                        },
+                                                        onFieldSubmitted: (_) {
+                                                          FocusScope.of(context)
+                                                              .requestFocus(
+                                                                  _passwordFocus);
+                                                        },
+                                                      ),
+                                                      const SizedBox(
+                                                          height: 16),
+                                                      TextFormField(
+                                                        controller:
+                                                            _passwordController,
+                                                        focusNode:
+                                                            _passwordFocus,
+                                                        obscureText:
+                                                            _obscurePassword,
+                                                        style: const TextStyle(
+                                                            fontSize: 16),
+                                                        decoration:
+                                                            InputDecoration(
+                                                          labelText: 'Password',
+                                                          prefixIcon:
+                                                              const Icon(
+                                                                  Icons.lock),
+                                                          suffixIcon:
+                                                              IconButton(
+                                                            icon: Icon(
+                                                              _obscurePassword
+                                                                  ? Icons
+                                                                      .visibility_off
+                                                                  : Icons
+                                                                      .visibility,
+                                                              // Swapped visibility icons
+                                                            ),
+                                                            onPressed: () {
+                                                              setState(() {
+                                                                _obscurePassword =
+                                                                    !_obscurePassword;
+                                                              });
+                                                            },
+                                                          ),
+                                                          border:
+                                                              OutlineInputBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                          ),
+                                                        ),
+                                                        validator: (value) {
+                                                          if (value == null ||
+                                                              value.isEmpty) {
+                                                            return 'Password wajib diisi';
+                                                          }
+                                                          return null;
+                                                        },
+                                                        onFieldSubmitted: (_) {
+                                                          _login();
+                                                        },
+                                                      ),
+                                                      const SizedBox(
+                                                          height: 24),
+                                                      SizedBox(
+                                                        width: double.infinity,
+                                                        height: 50,
+                                                        child: ElevatedButton(
+                                                          onPressed: _isLoading
+                                                              ? null
+                                                              : _login,
+                                                          style: ElevatedButton
+                                                              .styleFrom(
+                                                            backgroundColor:
+                                                                Colors.blue,
+                                                            foregroundColor:
+                                                                Colors.white,
+                                                            shape:
+                                                                RoundedRectangleBorder(
                                                               borderRadius:
                                                                   BorderRadius
                                                                       .circular(
                                                                           12),
                                                             ),
                                                           ),
-                                                          validator: (value) {
-                                                            if (value == null ||
-                                                                value.isEmpty) {
-                                                              return 'Port wajib';
-                                                            }
-                                                            return null;
-                                                          },
-                                                          onFieldSubmitted:
-                                                              (_) {
-                                                            FocusScope.of(
-                                                                    context)
-                                                                .requestFocus(
-                                                                    _usernameFocus);
-                                                          },
+                                                          child: _isLoading
+                                                              ? const SizedBox(
+                                                                  height: 24,
+                                                                  width: 24,
+                                                                  child:
+                                                                      CircularProgressIndicator(
+                                                                    color: Colors
+                                                                        .white,
+                                                                    strokeWidth:
+                                                                        2,
+                                                                  ),
+                                                                )
+                                                              : const Text(
+                                                                  'LOG IN',
+                                                                  style:
+                                                                      TextStyle(
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    fontSize:
+                                                                        16,
+                                                                  ),
+                                                                ),
                                                         ),
                                                       ),
                                                     ],
                                                   ),
-                                                  const SizedBox(height: 16),
-                                                  TextFormField(
-                                                    controller:
-                                                        _usernameController,
-                                                    focusNode: _usernameFocus,
-                                                    style: const TextStyle(
-                                                        fontSize: 16),
-                                                    decoration: InputDecoration(
-                                                      labelText: 'Username',
-                                                      prefixIcon: const Icon(
-                                                          Icons.person),
-                                                      border:
-                                                          OutlineInputBorder(
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(12),
-                                                      ),
-                                                    ),
-                                                    validator: (value) {
-                                                      if (value == null ||
-                                                          value.isEmpty) {
-                                                        return 'Username wajib diisi';
-                                                      }
-                                                      return null;
-                                                    },
-                                                    onFieldSubmitted: (_) {
-                                                      FocusScope.of(context)
-                                                          .requestFocus(
-                                                              _passwordFocus);
-                                                    },
-                                                  ),
-                                                  const SizedBox(height: 16),
-                                                  TextFormField(
-                                                    controller:
-                                                        _passwordController,
-                                                    focusNode: _passwordFocus,
-                                                    style: const TextStyle(
-                                                        fontSize: 16),
-                                                    obscureText:
-                                                        _obscurePassword,
-                                                    decoration: InputDecoration(
-                                                      labelText: 'Password',
-                                                      prefixIcon: const Icon(
-                                                          Icons.lock),
-                                                      suffixIcon: IconButton(
-                                                        icon: Icon(
-                                                          _obscurePassword
-                                                              ? Icons.visibility
-                                                              : Icons
-                                                                  .visibility_off,
-                                                        ),
-                                                        onPressed: () {
-                                                          setState(() {
-                                                            _obscurePassword =
-                                                                !_obscurePassword;
-                                                          });
-                                                        },
-                                                      ),
-                                                      border:
-                                                          OutlineInputBorder(
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(12),
-                                                      ),
-                                                    ),
-                                                    onFieldSubmitted: (_) {
-                                                      FocusScope.of(context)
-                                                          .unfocus();
-                                                    },
-                                                  ),
-                                                  const SizedBox(height: 32),
-                                                  SizedBox(
-                                                    width: double.infinity,
-                                                    child: ElevatedButton(
-                                                      onPressed: _isLoading
-                                                          ? null
-                                                          : _login,
-                                                      style: ElevatedButton
-                                                          .styleFrom(
-                                                        backgroundColor:
-                                                            Colors.blue,
-                                                        foregroundColor:
-                                                            Colors.white,
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                vertical: 20),
-                                                        shape:
-                                                            RoundedRectangleBorder(
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(12),
-                                                        ),
-                                                        elevation: 2,
-                                                      ),
-                                                      child: _isLoading
-                                                          ? const SizedBox(
-                                                              height: 20,
-                                                              width: 20,
-                                                              child:
-                                                                  CircularProgressIndicator(
-                                                                color: Colors
-                                                                    .white,
-                                                                strokeWidth: 2,
-                                                              ),
-                                                            )
-                                                          : const Text(
-                                                              'LOG IN',
-                                                              style: TextStyle(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                fontSize: 16,
-                                                              ),
-                                                            ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                                ),
+                                              ))
+                                          : Container(
+                                              key: const ValueKey('SavedTab'),
+                                              child: _buildSavedLoginsTab(),
                                             ),
-                                          )
-                                        : Container(
-                                            key: const ValueKey('SavedTab'),
-                                            child: _buildSavedLoginsTab(),
-                                          ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 24),

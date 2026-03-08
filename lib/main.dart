@@ -21,12 +21,11 @@ import 'screens/system_logs_screen.dart';
 import 'screens/initial_config_screen.dart';
 import 'screens/customer_map_screen.dart';
 // import 'screens/changelog_screen.dart'; // Remove this import
-import 'services/mikrotik_service.dart';
 import 'providers/mikrotik_provider.dart';
 import 'providers/router_session_provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'services/scheduled_backup_service.dart';
-import 'services/mikrotik_native_service.dart';
+import 'services/notification_service.dart';
 
 // Reusable widget to eliminate code duplication
 class MikrotikScreenWrapper extends StatelessWidget {
@@ -121,12 +120,40 @@ class ThemeProvider with ChangeNotifier {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('id_ID', null);
 
-  // Initialize scheduled backups
-  ScheduledBackupService().initializeScheduledBackups();
+  // Initialize date formatting in background (non-blocking)
+  initializeDateFormatting('id_ID', null).catchError((e) {
+    print('[MAIN] Error initializing date formatting: $e');
+  });
+
+  // Initialize scheduled backups in background (non-blocking)
+  Future.microtask(() {
+    try {
+      ScheduledBackupService().initializeScheduledBackups();
+    } catch (e) {
+      print('[MAIN] Error initializing scheduled backups: $e');
+    }
+  });
+
+  // Check notification queue in background (non-blocking)
+  Future.microtask(() => _checkNotificationQueue());
 
   runApp(const MyApp());
+}
+
+/// Check notification queue in background
+void _checkNotificationQueue() async {
+  try {
+    print('[MAIN] Checking notification queue...');
+
+    final notificationService = NotificationService();
+    await notificationService.initialize();
+    await notificationService.checkNotificationQueue();
+
+    print('[MAIN] Notification queue check completed');
+  } catch (e) {
+    print('[MAIN] Error checking notification queue: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management — Mikrotik PPPoE Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .user-name-cell { display: flex; align-items: center; gap: 10px; }
+        .user-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+        .user-info-cell { line-height: 1.3; }
+        .user-info-cell .username { font-weight: 600; font-size: 13px; }
+        .user-info-cell .service { font-size: 11px; color: var(--text-muted); }
+        .action-btns { display: flex; gap: 4px; }
+        .speed-text { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+        .ip-text { font-family: monospace; font-size: 12px; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+<div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo-placeholder"><i class="fas fa-network-wired"></i></div>
+            <div class="sidebar-title"><h2>PPPoE Monitor</h2><p>Web Admin Panel</p></div>
+        </div>
+        <nav class="sidebar-nav">
+            <span class="nav-section-label">Menu Utama</span>
+            <a href="dashboard.html" class="nav-item"><i class="fas fa-home"></i><span class="nav-label">Dashboard</span></a>
+            <a href="users.html" class="nav-item active"><i class="fas fa-users"></i><span class="nav-label">User Management</span></a>
+            <a href="billing.html" class="nav-item"><i class="fas fa-money-bill-wave"></i><span class="nav-label">Billing</span></a>
+            <a href="monitoring.html" class="nav-item"><i class="fas fa-chart-line"></i><span class="nav-label">Monitoring</span></a>
+            <a href="map.html" class="nav-item"><i class="fas fa-map-marked-alt"></i><span class="nav-label">Customer Map</span></a>
+            <a href="reports.html" class="nav-item"><i class="fas fa-file-alt"></i><span class="nav-label">Reports</span></a>
+            <a href="settings.html" class="nav-item"><i class="fas fa-cog"></i><span class="nav-label">Settings</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="sidebar-user-avatar" id="userAvatarLetter">A</div>
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name" id="sidebarUserName">Admin</div>
+                    <div class="sidebar-user-role">Administrator</div>
+                </div>
+            </div>
+            <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i><span>Logout</span></button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="mobile-menu-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                <div>
+                    <h1>User Management</h1>
+                    <div class="topbar-breadcrumb">Kelola pelanggan PPPoE</div>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <button class="btn-icon" onclick="toggleTheme()"><i class="fas fa-moon" id="themeIcon"></i></button>
+                <button class="btn btn-primary" onclick="openAddModal()"><i class="fas fa-user-plus"></i> Tambah User</button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <!-- Stats Summary -->
+            <div class="stats-grid" style="margin-bottom:24px">
+                <div class="stat-card">
+                    <div class="stat-icon blue"><i class="fas fa-users"></i></div>
+                    <div class="stat-details"><p class="stat-label">Total User</p><h3 class="stat-value" id="summTotal">—</h3></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green"><i class="fas fa-wifi"></i></div>
+                    <div class="stat-details"><p class="stat-label">Aktif</p><h3 class="stat-value" id="summActive">—</h3></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon danger"><i class="fas fa-ban"></i></div>
+                    <div class="stat-details"><p class="stat-label">Disabled</p><h3 class="stat-value" id="summDisabled">—</h3></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon warning"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="stat-details"><p class="stat-label">Belum Bayar</p><h3 class="stat-value" id="summUnpaid">—</h3></div>
+                </div>
+            </div>
+
+            <!-- Main Table Card -->
+            <div class="card">
+                <!-- Filter Bar -->
+                <div class="filter-bar">
+                    <div class="filter-search" style="flex:1">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Cari username, nama, IP..." oninput="onSearch()">
+                    </div>
+                    <select class="filter-select" id="filterStatus" onchange="loadUsers()">
+                        <option value="">Semua Status</option>
+                        <option value="active">Aktif</option>
+                        <option value="disabled">Disabled</option>
+                    </select>
+                    <select class="filter-select" id="filterProfile" onchange="loadUsers()">
+                        <option value="">Semua Profile</option>
+                    </select>
+                    <button class="btn btn-outline btn-sm" onclick="exportUsers()"><i class="fas fa-file-export"></i> Export</button>
+                    <button class="btn btn-ghost btn-sm" onclick="loadUsers()"><i class="fas fa-sync"></i></button>
+                </div>
+
+                <!-- Table -->
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Nama / Layanan</th>
+                                <th>Profile</th>
+                                <th>IP Address</th>
+                                <th>Status</th>
+                                <th>Kecepatan</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr><td colspan="7"><div class="loading-overlay"><div class="loading-spinner"></div> Memuat data...</div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination">
+                    <span class="pagination-info" id="paginationInfo">Memuat...</span>
+                    <div class="pagination-controls" id="paginationControls"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Add/Edit User Modal -->
+<div class="modal-overlay" id="userModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 id="modalTitle">Tambah User Baru</h3>
+            <button class="modal-close" onclick="closeModal('userModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Username *</label>
+                    <input type="text" id="fUsername" class="form-control" placeholder="contoh: user001">
+                </div>
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" id="fPassword" class="form-control" placeholder="Kosongkan jika tidak diubah">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nama Lengkap</label>
+                    <input type="text" id="fNama" class="form-control" placeholder="Nama pelanggan">
+                </div>
+                <div class="form-group">
+                    <label>No. Telepon</label>
+                    <input type="text" id="fTelp" class="form-control" placeholder="08xxxxxxxxxx">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Profile PPPoE *</label>
+                    <select id="fProfile" class="form-control">
+                        <option value="">Pilih Profile</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>IP Address</label>
+                    <input type="text" id="fIP" class="form-control" placeholder="Kosong = otomatis">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Alamat</label>
+                <input type="text" id="fAlamat" class="form-control" placeholder="Alamat pelanggan">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Tanggal Tagihan</label>
+                    <input type="number" id="fTanggalTagihan" class="form-control" min="1" max="31" placeholder="Tanggal (1-31)">
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="fStatus" class="form-control">
+                        <option value="active">Aktif</option>
+                        <option value="disabled">Disabled</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('userModal')">Batal</button>
+            <button class="btn btn-primary" onclick="saveUser()" id="saveUserBtn">
+                <i class="fas fa-save"></i> Simpan
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal" style="max-width:420px">
+        <div class="modal-header">
+            <h3>Konfirmasi Hapus</h3>
+            <button class="modal-close" onclick="closeModal('deleteModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="text-align:center;padding:32px 24px">
+            <div style="width:60px;height:60px;background:var(--danger-glow);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:26px;color:var(--danger)">
+                <i class="fas fa-trash"></i>
+            </div>
+            <h4 style="margin-bottom:8px">Hapus user <strong id="deleteUsername"></strong>?</h4>
+            <p style="color:var(--text-muted);font-size:13px">Tindakan ini tidak dapat dibatalkan. User akan dihapus dari Mikrotik dan database.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('deleteModal')">Batal</button>
+            <button class="btn btn-danger" onclick="executeDelete()" id="confirmDeleteBtn">
+                <i class="fas fa-trash"></i> Hapus
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===================================
+// STATE
+// ===================================
+let currentPage = 1;
+let totalPages = 1;
+let editingUsername = null;
+let deleteTarget = null;
+let searchTimer = null;
+const perPage = 20;
+
+// ===================================
+// INIT
+// ===================================
+function initAuth() {
+    loadTheme();
+    try {
+        const u = JSON.parse(sessionStorage.getItem('userInfo') || '{}');
+        document.getElementById('sidebarUserName').textContent = u.full_name || u.username || 'Admin';
+        document.getElementById('userAvatarLetter').textContent = (u.full_name || u.username || 'A').charAt(0).toUpperCase();
+    } catch(e) {}
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    initAuth();
+    loadUsers();
+    loadProfiles();
+
+    // Check if opened with ?action=add
+    if (new URLSearchParams(location.search).get('action') === 'add') {
+        openAddModal();
+    }
+});
+
+// ===================================
+// THEME & SIDEBAR
+// ===================================
+function loadTheme() {
+    if (localStorage.getItem('theme') === 'light') {
+        document.body.classList.add('light-theme');
+        document.getElementById('themeIcon').className = 'fas fa-sun';
+    }
+}
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    const isLight = document.body.classList.contains('light-theme');
+    document.getElementById('themeIcon').className = isLight ? 'fas fa-sun' : 'fas fa-moon';
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('show'); }
+document.addEventListener('click', e => {
+    if (window.innerWidth <= 768 && !document.getElementById('sidebar').contains(e.target) && !e.target.closest('.mobile-menu-toggle'))
+        document.getElementById('sidebar').classList.remove('show');
+});
+async function logout() {
+    if (!confirm('Yakin logout?')) return;
+    try { await fetch('api/auth/logout.php', { method: 'POST' }); } catch(e) {}
+    sessionStorage.clear();
+    window.location.href = 'login.html';
+}
+
+// ===================================
+// TOAST
+// ===================================
+function showToast(title, message, type = 'info') {
+    const icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.innerHTML = `<i class="fas ${icons[type]} toast-icon"></i><div class="toast-content"><div class="toast-title">${title}</div>${message?`<div class="toast-message">${message}</div>`:''}</div><button class="toast-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>`;
+    document.getElementById('toastContainer').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+}
+
+// ===================================
+// LOAD USERS
+// ===================================
+function onSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { currentPage = 1; loadUsers(); }, 400);
+}
+
+async function loadUsers() {
+    const search = document.getElementById('searchInput').value;
+    const status = document.getElementById('filterStatus').value;
+    const profile = document.getElementById('filterProfile').value;
+
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = `<tr><td colspan="7"><div class="loading-overlay"><div class="loading-spinner"></div> Memuat data...</div></td></tr>`;
+
+    try {
+        const params = new URLSearchParams({ page: currentPage, per_page: perPage, search, status, profile });
+        const res = await fetch(`../../api/get_all_users_paginated.php?${params}`);
+        const data = await res.json();
+
+        if (data.success && data.data) {
+            renderTable(data.data);
+            renderPagination(data.total, data.page, data.per_page);
+            updateSummary(data);
+        } else {
+            tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fas fa-users"></i><h4>Tidak ada data</h4><p>${data.message || 'Tidak dapat memuat pengguna'}</p></div></td></tr>`;
+        }
+    } catch(e) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fas fa-plug"></i><h4>Koneksi gagal</h4><p>Pastikan server PHP dan database berjalan</p></div></td></tr>`;
+    }
+}
+
+function updateSummary(data) {
+    document.getElementById('summTotal').textContent = data.total || 0;
+    document.getElementById('summActive').textContent = data.active || 0;
+    document.getElementById('summDisabled').textContent = data.disabled || 0;
+    document.getElementById('summUnpaid').textContent = data.unpaid || 0;
+}
+
+function renderTable(users) {
+    const tbody = document.getElementById('usersTableBody');
+    if (!users || users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="fas fa-users"></i><h4>Tidak ada user</h4><p>Coba ubah filter pencarian</p></div></td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = users.map(u => {
+        const statusBadge = u.disabled === 'yes'
+            ? `<span class="badge badge-danger"><i class="fas fa-ban"></i> Disabled</span>`
+            : `<span class="badge badge-success"><i class="fas fa-check-circle"></i> Aktif</span>`;
+
+        const avatar = (u.nama || u.username || 'U').charAt(0).toUpperCase();
+        const avatarColor = stringToColor(u.username || '');
+
+        return `
+        <tr>
+            <td>
+                <div class="user-name-cell">
+                    <div class="user-avatar" style="background:${avatarColor}">${avatar}</div>
+                    <div class="user-info-cell">
+                        <div class="username">${escHtml(u.username)}</div>
+                        <div class="service">${escHtml(u.service || 'ppp')}</div>
+                    </div>
+                </div>
+            </td>
+            <td>${escHtml(u.nama || u.comment || '—')}</td>
+            <td><span class="badge badge-primary">${escHtml(u.profile || '—')}</span></td>
+            <td><span class="ip-text">${escHtml(u['remote-address'] || u.local_address || '—')}</span></td>
+            <td>${statusBadge}</td>
+            <td><span class="speed-text">${escHtml(u['rate-limit'] || '—')}</span></td>
+            <td>
+                <div class="action-btns">
+                    <button class="btn btn-primary btn-sm btn-icon-only" onclick="openEditModal(${JSON.stringify(JSON.stringify(u))})" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-outline btn-sm btn-icon-only" onclick="toggleDisable('${escHtml(u.username)}', ${u.disabled === 'yes'})" title="${u.disabled === 'yes' ? 'Aktifkan' : 'Disable'}">
+                        <i class="fas fa-${u.disabled === 'yes' ? 'play' : 'pause'}"></i>
+                    </button>
+                    <button class="btn btn-danger btn-sm btn-icon-only" onclick="openDeleteModal('${escHtml(u.username)}')" title="Hapus"><i class="fas fa-trash"></i></button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function renderPagination(total, page, perPage) {
+    totalPages = Math.ceil(total / perPage);
+    currentPage = page;
+
+    const start = (page - 1) * perPage + 1;
+    const end = Math.min(page * perPage, total);
+    document.getElementById('paginationInfo').textContent = `Menampilkan ${start}–${end} dari ${total} user`;
+
+    const ctrl = document.getElementById('paginationControls');
+    let html = `<button class="page-btn" onclick="goPage(${page - 1})" ${page <= 1 ? 'disabled' : ''}><i class="fas fa-chevron-left"></i></button>`;
+
+    const from = Math.max(1, page - 2);
+    const to = Math.min(totalPages, page + 2);
+    if (from > 1) html += `<button class="page-btn" onclick="goPage(1)">1</button>${from > 2 ? '<span style="padding:0 4px;color:var(--text-muted)">…</span>' : ''}`;
+    for (let i = from; i <= to; i++) html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+    if (to < totalPages) html += `${to < totalPages - 1 ? '<span style="padding:0 4px;color:var(--text-muted)">…</span>' : ''}<button class="page-btn" onclick="goPage(${totalPages})">${totalPages}</button>`;
+
+    html += `<button class="page-btn" onclick="goPage(${page + 1})" ${page >= totalPages ? 'disabled' : ''}><i class="fas fa-chevron-right"></i></button>`;
+    ctrl.innerHTML = html;
+}
+
+function goPage(p) {
+    if (p < 1 || p > totalPages) return;
+    currentPage = p;
+    loadUsers();
+}
+
+// ===================================
+// PROFILES
+// ===================================
+async function loadProfiles() {
+    try {
+        const res = await fetch('../../api/profile_pricing_operations.php?action=list');
+        const data = await res.json();
+        if (data.success && data.data) {
+            const opts = data.data.map(p => `<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('');
+            document.getElementById('filterProfile').innerHTML = `<option value="">Semua Profile</option>${opts}`;
+            document.getElementById('fProfile').innerHTML = `<option value="">Pilih Profile</option>${opts}`;
+        }
+    } catch(e) {}
+}
+
+// ===================================
+// MODAL
+// ===================================
+function openAddModal() {
+    editingUsername = null;
+    document.getElementById('modalTitle').textContent = 'Tambah User Baru';
+    ['fUsername','fPassword','fNama','fTelp','fIP','fAlamat','fTanggalTagihan'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('fProfile').value = '';
+    document.getElementById('fStatus').value = 'active';
+    document.getElementById('fUsername').disabled = false;
+    openModal('userModal');
+}
+
+function openEditModal(jsonStr) {
+    const u = JSON.parse(jsonStr);
+    editingUsername = u.username;
+    document.getElementById('modalTitle').textContent = `Edit User: ${u.username}`;
+    document.getElementById('fUsername').value = u.username || '';
+    document.getElementById('fUsername').disabled = true;
+    document.getElementById('fPassword').value = '';
+    document.getElementById('fNama').value = u.nama || u.comment || '';
+    document.getElementById('fTelp').value = u.no_telp || '';
+    document.getElementById('fProfile').value = u.profile || '';
+    document.getElementById('fIP').value = u['remote-address'] || '';
+    document.getElementById('fAlamat').value = u.alamat || '';
+    document.getElementById('fTanggalTagihan').value = u.tanggal_tagihan || '';
+    document.getElementById('fStatus').value = u.disabled === 'yes' ? 'disabled' : 'active';
+    openModal('userModal');
+}
+
+function openDeleteModal(username) {
+    deleteTarget = username;
+    document.getElementById('deleteUsername').textContent = username;
+    openModal('deleteModal');
+}
+
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+document.addEventListener('click', e => {
+    if (e.target.classList.contains('modal-overlay')) closeModal(e.target.id);
+});
+
+// ===================================
+// SAVE USER
+// ===================================
+async function saveUser() {
+    const username = document.getElementById('fUsername').value.trim();
+    const password = document.getElementById('fPassword').value;
+    const profile = document.getElementById('fProfile').value;
+
+    if (!editingUsername && (!username || !password || !profile)) {
+        showToast('Validasi', 'Username, password, dan profile wajib diisi', 'warning');
+        return;
+    }
+
+    const payload = {
+        action: editingUsername ? 'edit' : 'add',
+        username, password,
+        nama: document.getElementById('fNama').value,
+        no_telp: document.getElementById('fTelp').value,
+        profile,
+        remote_address: document.getElementById('fIP').value,
+        alamat: document.getElementById('fAlamat').value,
+        tanggal_tagihan: document.getElementById('fTanggalTagihan').value,
+        disabled: document.getElementById('fStatus').value === 'disabled' ? 'yes' : 'no'
+    };
+
+    const btn = document.getElementById('saveUserBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+
+    try {
+        const res = await fetch('../../api/save_user.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showToast('Berhasil', editingUsername ? 'User berhasil diperbarui' : 'User berhasil ditambah', 'success');
+            closeModal('userModal');
+            loadUsers();
+        } else {
+            showToast('Gagal', data.message || 'Terjadi kesalahan', 'error');
+        }
+    } catch(e) {
+        showToast('Error', 'Tidak dapat terhubung ke server', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Simpan';
+    }
+}
+
+// ===================================
+// DELETE
+// ===================================
+async function executeDelete() {
+    if (!deleteTarget) return;
+    const btn = document.getElementById('confirmDeleteBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menghapus...';
+
+    try {
+        const res = await fetch('../../api/delete_user.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: deleteTarget })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showToast('Berhasil', `User ${deleteTarget} dihapus`, 'success');
+            closeModal('deleteModal');
+            loadUsers();
+        } else {
+            showToast('Gagal', data.message || 'Gagal menghapus', 'error');
+        }
+    } catch(e) {
+        showToast('Error', 'Tidak dapat terhubung ke server', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-trash"></i> Hapus';
+        deleteTarget = null;
+    }
+}
+
+// ===================================
+// TOGGLE DISABLE
+// ===================================
+async function toggleDisable(username, isCurrentlyDisabled) {
+    const action = isCurrentlyDisabled ? 'enable' : 'disable';
+    try {
+        const res = await fetch('../../api/save_user.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, username, disabled: isCurrentlyDisabled ? 'no' : 'yes' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Berhasil', `User ${username} ${isCurrentlyDisabled ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
+            loadUsers();
+        } else {
+            showToast('Gagal', data.message || 'Gagal memperbarui status', 'error');
+        }
+    } catch(e) {
+        showToast('Error', 'Tidak dapat terhubung ke server', 'error');
+    }
+}
+
+// ===================================
+// EXPORT
+// ===================================
+function exportUsers() {
+    const params = new URLSearchParams({
+        search: document.getElementById('searchInput').value,
+        status: document.getElementById('filterStatus').value,
+        profile: document.getElementById('filterProfile').value,
+        format: 'csv'
+    });
+    window.open(`../../api/export_ppp.php?${params}`, '_blank');
+    showToast('Export', 'Mengunduh file CSV...', 'info');
+}
+
+// ===================================
+// HELPERS
+// ===================================
+function escHtml(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    const colors = ['#4f8ef7','#a855f7','#22c55e','#f59e0b','#ef4444','#f97316','#06b6d4','#ec4899'];
+    return colors[Math.abs(hash) % colors.length];
+}
+</script>
+</body>
+</html>

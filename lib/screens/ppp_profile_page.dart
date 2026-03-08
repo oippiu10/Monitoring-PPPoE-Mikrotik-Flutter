@@ -7,6 +7,8 @@ import '../providers/mikrotik_provider.dart';
 import '../providers/router_session_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/gradient_container.dart'; // Add this import
+import 'add_ppp_profile_screen.dart';
+import 'edit_ppp_profile_screen.dart';
 
 class PPPProfilePage extends StatefulWidget {
   const PPPProfilePage({super.key});
@@ -339,8 +341,27 @@ class _PPPProfilePageState extends State<PPPProfilePage> {
           iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.white),
           actions: [
             IconButton(
+              icon: Icon(Icons.add_circle_outline,
+                  color: isDark ? Colors.white : Colors.white),
+              tooltip: 'Tambah Profile',
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AddPPPProfileScreen(),
+                  ),
+                );
+                // Refresh if profile was added
+                if (result == true) {
+                  final provider = context.read<MikrotikProvider>();
+                  provider.refreshData();
+                }
+              },
+            ),
+            IconButton(
               icon: Icon(Icons.refresh,
                   color: isDark ? Colors.white : Colors.white),
+              tooltip: 'Refresh',
               onPressed: () {
                 final provider = context.read<MikrotikProvider>();
                 provider.refreshData();
@@ -810,6 +831,9 @@ class _PPPProfilePageState extends State<PPPProfilePage> {
     final isIsolir = profile['name']?.toString().toUpperCase() == 'ISOLIR';
     final profileName = profile['name']?.toString() ?? '';
 
+    // Save parent context that has access to providers
+    final parentContext = context;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1134,6 +1158,173 @@ class _PPPProfilePageState extends State<PPPProfilePage> {
                             ],
                             isDark: isDark,
                           ),
+
+                          // Action Buttons
+                          const SizedBox(height: 24),
+                          Row(
+                            children: [
+                              // Edit Button
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () async {
+                                    Navigator.pop(context); // Close modal
+                                    final result = await Navigator.push(
+                                      parentContext,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            EditPPPProfileScreen(
+                                          profile: profile,
+                                        ),
+                                      ),
+                                    );
+                                    // Refresh if profile was updated
+                                    if (result == true) {
+                                      final provider = parentContext
+                                          .read<MikrotikProvider>();
+                                      provider.refreshData();
+                                    }
+                                  },
+                                  icon: const Icon(Icons.edit),
+                                  label: const Text('Edit'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.orange[700],
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              // Delete Button
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: isDefault
+                                      ? null
+                                      : () async {
+                                          // Show confirmation dialog
+                                          final confirm =
+                                              await showDialog<bool>(
+                                            context: context,
+                                            builder: (dialogContext) =>
+                                                AlertDialog(
+                                              title:
+                                                  const Text('Hapus Profile'),
+                                              content: Text(
+                                                  'Apakah Anda yakin ingin menghapus profile "$profileName"?\n\nProfile yang sedang digunakan tidak dapat dihapus.'),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(
+                                                          dialogContext, false),
+                                                  child: const Text('Batal'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(
+                                                          dialogContext, true),
+                                                  style: TextButton.styleFrom(
+                                                    foregroundColor: Colors.red,
+                                                  ),
+                                                  child: const Text('Hapus'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+
+                                          if (confirm == true) {
+                                            try {
+                                              // Use parentContext that has access to providers
+                                              final provider = parentContext
+                                                  .read<MikrotikProvider>();
+
+                                              final routerSession =
+                                                  parentContext.read<
+                                                      RouterSessionProvider>();
+                                              final service =
+                                                  await routerSession
+                                                      .getService();
+
+                                              final profileId =
+                                                  profile['.id']?.toString();
+                                              if (profileId == null) {
+                                                throw Exception(
+                                                    'Profile ID tidak ditemukan');
+                                              }
+
+                                              await service
+                                                  .deletePPPProfile(profileId);
+
+                                              if (!context.mounted) return;
+
+                                              // Close modal
+                                              Navigator.pop(context);
+
+                                              // Show success message using parentContext
+                                              ScaffoldMessenger.of(
+                                                      parentContext)
+                                                  .showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                      'Profile berhasil dihapus'),
+                                                  backgroundColor: Colors.green,
+                                                  duration:
+                                                      Duration(seconds: 2),
+                                                ),
+                                              );
+
+                                              // Refresh data using saved provider
+                                              provider.refreshData();
+                                            } catch (e) {
+                                              if (!context.mounted) return;
+
+                                              // Show error using parentContext
+                                              ScaffoldMessenger.of(
+                                                      parentContext)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                      'Gagal menghapus profile: ${e.toString()}'),
+                                                  backgroundColor: Colors.red,
+                                                  duration: const Duration(
+                                                      seconds: 3),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                  icon: const Icon(Icons.delete),
+                                  label: const Text('Hapus'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: isDefault
+                                        ? Colors.grey
+                                        : Colors.red[700],
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (isDefault)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                'Default profile tidak dapat dihapus',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
                         ],
                       ),
                     ),

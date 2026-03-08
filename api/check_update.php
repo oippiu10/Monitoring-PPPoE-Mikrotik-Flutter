@@ -35,6 +35,46 @@ const APK_SIZE_BYTES = 0; // Will be calculated if APK exists
 // Optional: Add release notes
 const RELEASE_NOTES = [
     [
+        'version' => '1.0.9+10',
+        'build' => 10,
+        'date' => '2026-02-08',
+        'notes' => [
+            'Fitur Baru: CRUD PPPoE Profile',
+            '- Tambah Profile Baru: Form lengkap untuk membuat profile PPPoE dengan konfigurasi name, local-address, remote-address, rate-limit, session-timeout, idle-timeout, dan only-one',
+            '- Edit Profile: Ubah konfigurasi profile yang sudah ada dengan pre-filled form dan validasi duplikasi nama',
+            '- Hapus Profile: Hapus profile dengan konfirmasi dialog dan validasi keamanan',
+            '- Validasi Keamanan: Mencegah penghapusan default profile dan profile yang sedang digunakan oleh user aktif',
+            '- Auto Refresh: Data profile otomatis ter-refresh setelah operasi tambah, edit, atau hapus',
+            'Bug Fixes:',
+            '- Perbaikan ProviderNotFoundException saat menghapus profile',
+            '- Perbaikan context issue dengan menggunakan parent context',
+            '- Perbaikan endpoint API delete menggunakan DELETE method yang benar',
+            '- Peningkatan stabilitas aplikasi dan error handling'
+        ]
+    ],
+    [
+        'version' => '1.0.8+9',
+        'build' => 9,
+        'date' => '2026-01-30',
+        'notes' => [
+            'Critical Bug Fixes',
+            '- Fix: Aplikasi stuck di logo (ANR - Application Not Responding)',
+            '- Fix: Multi-router cache issue (data antar router tercampur)',
+            '- Peningkatan performa startup aplikasi',
+            '- Optimasi cache system untuk multiple router'
+        ]
+    ],
+    [
+        'version' => '1.0.7+8',
+        'build' => 8,
+        'date' => '2026-01-28',
+        'notes' => [
+            '🔔 Fitur Notifikasi Update Otomatis',
+            '⏰ Background check setiap 12 jam',
+            '🐛 Perbaikan bug dan peningkatan performa'
+        ]
+    ],
+    [
         'version' => '1.0.6+7',
         'build' => 7,
         'date' => '2026-01-20',

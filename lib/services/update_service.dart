@@ -128,6 +128,97 @@ class UpdateService {
     return '';
   }
 
+  /// Register device to backend
+  static Future<bool> registerDevice({
+    required String deviceId,
+    required String deviceModel,
+    required String appVersion,
+    required int buildNumber,
+  }) async {
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final url = Uri.parse('$baseUrl/device_token_operations.php')
+          .replace(queryParameters: {'action': 'register'});
+
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'device_id': deviceId,
+              'device_model': deviceModel,
+              'app_version': appVersion,
+              'build_number': buildNumber,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('[UPDATE] Failed to register device: $e');
+      return false;
+    }
+  }
+
+  /// Update last check timestamp on backend
+  static Future<bool> updateLastCheck(String deviceId) async {
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final url = Uri.parse('$baseUrl/device_token_operations.php')
+          .replace(queryParameters: {'action': 'update_last_check'});
+
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'device_id': deviceId}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('[UPDATE] Failed to update last check: $e');
+      return false;
+    }
+  }
+
+  /// Toggle notification setting on backend
+  static Future<bool> toggleNotification(String deviceId, bool enabled) async {
+    try {
+      final baseUrl = await ConfigService.getBaseUrl();
+      final url = Uri.parse('$baseUrl/device_token_operations.php')
+          .replace(queryParameters: {'action': 'toggle_notification'});
+
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'device_id': deviceId,
+              'enabled': enabled,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('[UPDATE] Failed to toggle notification: $e');
+      return false;
+    }
+  }
+
   /// Format size from bytes to human readable
   static String formatBytes(int bytes) {
     if (bytes == 0) return '0 B';
@@ -261,6 +352,60 @@ class UpdateService {
           result.type == ResultType.noAppToOpen;
     } catch (e) {
       throw Exception('Install error: $e');
+    }
+  }
+
+  /// Check notification queue from server
+  static Future<Map<String, dynamic>> checkNotificationQueue(
+      String deviceId) async {
+    try {
+      final apiUrl = await ConfigService.getApiUrl();
+      final url =
+          '$apiUrl/notification_queue.php?action=check&device_id=$deviceId';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data;
+      } else {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      print('[UPDATE_SERVICE] Error checking notification queue: $e');
+      return {
+        'success': false,
+        'has_notification': false,
+        'notification': null
+      };
+    }
+  }
+
+  /// Mark notification as read
+  static Future<bool> markNotificationRead(
+      String deviceId, int notificationId) async {
+    try {
+      final apiUrl = await ConfigService.getApiUrl();
+      final url = '$apiUrl/notification_queue.php?action=mark_read';
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'device_id': deviceId,
+          'notification_id': notificationId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['success'] == true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('[UPDATE_SERVICE] Error marking notification as read: $e');
+      return false;
     }
   }
 }
