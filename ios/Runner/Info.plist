@@ -31,16 +31,40 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
+
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Aplikasi ini membutuhkan akses jaringan lokal untuk memonitor router MikroTik Anda.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Aplikasi membutuhkan izin lokasi untuk mendeteksi nama WiFi/SSID router MikroTik.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Aplikasi membutuhkan izin lokasi untuk memonitor jaringan di latar belakang.</string>
+
+	<key>NSContactsUsageDescription</key>
+	<string>Aplikasi membutuhkan akses kontak untuk fitur manajemen user.</string>
+
+	<key>UIBackgroundModes</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+		<string>processing</string>
+		<string>location</string>
 	</array>
+
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>tel</string>
+		<string>https</string>
+		<string>http</string>
+	</array>
+
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
