@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Mikrotik Monitor</string>
+	<string>PPPoE Monitor</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>mikrotik_monitor</string>
+	<string>mikrotik_pppoe_monitor</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -31,30 +31,40 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Aplikasi ini membutuhkan akses jaringan lokal untuk memonitor router MikroTik Anda.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Aplikasi memerlukan akses jaringan lokal untuk terhubung dan memonitor router MikroTik Anda.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Aplikasi membutuhkan izin lokasi untuk mendeteksi nama WiFi/SSID router MikroTik.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Aplikasi membutuhkan izin lokasi untuk memonitor jaringan di latar belakang.</string>
+	<string>Aplikasi memerlukan izin lokasi untuk mendeteksi nama WiFi/SSID router MikroTik yang sedang terhubung.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Aplikasi memerlukan izin lokasi untuk memantau status jaringan secara real-time di latar belakang.</string>
 
 	<key>NSContactsUsageDescription</key>
-	<string>Aplikasi membutuhkan akses kontak untuk fitur manajemen user.</string>
+	<string>Izin kontak diperlukan untuk memudahkan manajemen dan pengiriman pesan WhatsApp ke pelanggan PPPoE Anda.</string>
 
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
-		<string>remote-notification</string>
 		<string>processing</string>
+		<string>remote-notification</string>
 		<string>location</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).checkStatus</string>
 	</array>
 
 	<key>LSApplicationQueriesSchemes</key>
@@ -63,6 +73,7 @@
 		<string>tel</string>
 		<string>https</string>
 		<string>http</string>
+		<string>mailto</string>
 	</array>
 
 	<key>CADisableMinimumFrameDurationOnPhone</key>
