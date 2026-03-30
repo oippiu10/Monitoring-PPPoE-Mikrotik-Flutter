@@ -119,41 +119,41 @@ class ThemeProvider with ChangeNotifier {
 }
 
 void main() async {
+  // 1. Pastikan binding selesai
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Inisialisasi yang PASTI aman (Internal Flutter)
-  try {
-    await initializeDateFormatting('id_ID', null);
-  } catch (e) {
-    print('Date error: $e');
-  }
+  // 2. Jalankan aplikasi UTAMA dulu (Agar tidak Force Close saat startup)
+  runApp(const MyApp());
 
-  // 2. Bungkus semua fitur Background/Plugin dalam Try-Catch & Delay
-  // Tujuannya agar aplikasi "Login Screen" muncul dulu sebelum plugin error
-  Future.delayed(const Duration(milliseconds: 500), () async {
+  // 3. Jalankan servis background DENGAN JEDA (Delayed)
+  // Ini agar aplikasi sudah muncul di layar sebelum plugin berat/error dipanggil
+  Future.delayed(const Duration(milliseconds: 1500), () async {
+    print('[MAIN] Initializing background services after delay...');
+    
+    // Inisialisasi Tanggal
+    try {
+      await initializeDateFormatting('id_ID', null);
+    } catch (e) {
+      print('[MAIN] Error date formatting: $e');
+    }
+
+    // PROTEKSI KHUSUS: Jangan jalankan servis Android di iOS
     if (Platform.isAndroid) {
-      // Fitur yang hanya jalan di Android atau sering crash di iOS
       try {
         ScheduledBackupService().initializeScheduledBackups();
-        _checkNotificationQueue();
       } catch (e) {
-        print('Android service error: $e');
-      }
-    } else if (Platform.isIOS) {
-      // Khusus iOS: Hanya jalankan Notifikasi jika sudah yakin AppDelegate benar
-      try {
-        final notificationService = NotificationService();
-        await notificationService.initialize();
-        // Jangan jalankan _checkNotificationQueue dulu jika di dalamnya ada ExternalPath
-      } catch (e) {
-        print('iOS notification error: $e');
+        print('[MAIN] Error scheduled backups: $e');
       }
     }
+
+    // Cek Notifikasi (Hanya jika NotificationService sudah support iOS)
+    try {
+      _checkNotificationQueue();
+    } catch (e) {
+      print('[MAIN] Error notification queue: $e');
+    }
   });
-
-  runApp(const MyApp());
 }
-
 /// Check notification queue in background
 void _checkNotificationQueue() async {
   try {
