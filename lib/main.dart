@@ -121,22 +121,35 @@ class ThemeProvider with ChangeNotifier {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize date formatting in background (non-blocking)
-  initializeDateFormatting('id_ID', null).catchError((e) {
-    print('[MAIN] Error initializing date formatting: $e');
-  });
+  // 1. Inisialisasi yang PASTI aman (Internal Flutter)
+  try {
+    await initializeDateFormatting('id_ID', null);
+  } catch (e) {
+    print('Date error: $e');
+  }
 
-  // Initialize scheduled backups in background (non-blocking)
-  Future.microtask(() {
-    try {
-      ScheduledBackupService().initializeScheduledBackups();
-    } catch (e) {
-      print('[MAIN] Error initializing scheduled backups: $e');
+  // 2. Bungkus semua fitur Background/Plugin dalam Try-Catch & Delay
+  // Tujuannya agar aplikasi "Login Screen" muncul dulu sebelum plugin error
+  Future.delayed(const Duration(milliseconds: 500), () async {
+    if (Platform.isAndroid) {
+      // Fitur yang hanya jalan di Android atau sering crash di iOS
+      try {
+        ScheduledBackupService().initializeScheduledBackups();
+        _checkNotificationQueue();
+      } catch (e) {
+        print('Android service error: $e');
+      }
+    } else if (Platform.isIOS) {
+      // Khusus iOS: Hanya jalankan Notifikasi jika sudah yakin AppDelegate benar
+      try {
+        final notificationService = NotificationService();
+        await notificationService.initialize();
+        // Jangan jalankan _checkNotificationQueue dulu jika di dalamnya ada ExternalPath
+      } catch (e) {
+        print('iOS notification error: $e');
+      }
     }
   });
-
-  // Check notification queue in background (non-blocking)
-  Future.microtask(() => _checkNotificationQueue());
 
   runApp(const MyApp());
 }
