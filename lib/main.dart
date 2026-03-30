@@ -119,41 +119,42 @@ class ThemeProvider with ChangeNotifier {
 }
 
 void main() async {
-  // 1. Pastikan binding selesai
+  // 1. Inisialisasi awal Flutter
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. Jalankan aplikasi UTAMA dulu (Agar tidak Force Close saat startup)
+  // 2. LANGSUNG jalankan aplikasi (Agar layar login muncul dulu)
   runApp(const MyApp());
 
-  // 3. Jalankan servis background DENGAN JEDA (Delayed)
-  // Ini agar aplikasi sudah muncul di layar sebelum plugin berat/error dipanggil
+  // 3. Jalankan servis berat DENGAN JEDA (Agar tidak crash saat startup)
   Future.delayed(const Duration(milliseconds: 1500), () async {
-    print('[MAIN] Initializing background services after delay...');
+    print('[MAIN] Memulai servis background setelah jeda...');
     
-    // Inisialisasi Tanggal
+    // Inisialisasi format tanggal (Aman untuk semua platform)
     try {
       await initializeDateFormatting('id_ID', null);
     } catch (e) {
-      print('[MAIN] Error date formatting: $e');
+      print('Error Date: $e');
     }
 
-    // PROTEKSI KHUSUS: Jangan jalankan servis Android di iOS
+    // PROTEKSI KHUSUS: Hanya jalankan ini jika di Android
+    // Ini untuk mencegah library 'external_path' atau 'intent' bikin crash iOS
     if (Platform.isAndroid) {
       try {
         ScheduledBackupService().initializeScheduledBackups();
       } catch (e) {
-        print('[MAIN] Error scheduled backups: $e');
+        print('Error Backup Android: $e');
       }
     }
 
-    // Cek Notifikasi (Hanya jika NotificationService sudah support iOS)
+    // Inisialisasi Notifikasi (Hanya jika kamu sudah setting iOS di NotificationService)
     try {
       _checkNotificationQueue();
     } catch (e) {
-      print('[MAIN] Error notification queue: $e');
+      print('Error Notification: $e');
     }
   });
 }
+
 /// Check notification queue in background
 void _checkNotificationQueue() async {
   try {
