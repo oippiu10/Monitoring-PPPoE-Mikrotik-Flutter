@@ -3,7 +3,7 @@ workflows:
     name: Sideloadable iOS Profile Build
     instance_type: mac_mini_m2
     environment:
-      flutter: stable
+      flutter: 3.19.6
       xcode: latest
     scripts:
       - name: Fetch Flutter dependencies
