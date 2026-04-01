@@ -119,40 +119,26 @@ class ThemeProvider with ChangeNotifier {
 }
 
 void main() async {
-  // 1. Inisialisasi awal Flutter
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. LANGSUNG jalankan aplikasi (Agar layar login muncul dulu)
-  runApp(const MyApp());
+  // Initialize date formatting in background (non-blocking)
+  initializeDateFormatting('id_ID', null).catchError((e) {
+    print('[MAIN] Error initializing date formatting: $e');
+  });
 
-  // 3. Jalankan servis berat DENGAN JEDA (Agar tidak crash saat startup)
-  Future.delayed(const Duration(milliseconds: 1500), () async {
-    print('[MAIN] Memulai servis background setelah jeda...');
-    
-    // Inisialisasi format tanggal (Aman untuk semua platform)
+  // Initialize scheduled backups in background (non-blocking)
+  Future.microtask(() {
     try {
-      await initializeDateFormatting('id_ID', null);
+      ScheduledBackupService().initializeScheduledBackups();
     } catch (e) {
-      print('Error Date: $e');
-    }
-
-    // PROTEKSI KHUSUS: Hanya jalankan ini jika di Android
-    // Ini untuk mencegah library 'external_path' atau 'intent' bikin crash iOS
-    if (Platform.isAndroid) {
-      try {
-        ScheduledBackupService().initializeScheduledBackups();
-      } catch (e) {
-        print('Error Backup Android: $e');
-      }
-    }
-
-    // Inisialisasi Notifikasi (Hanya jika kamu sudah setting iOS di NotificationService)
-    try {
-      _checkNotificationQueue();
-    } catch (e) {
-      print('Error Notification: $e');
+      print('[MAIN] Error initializing scheduled backups: $e');
     }
   });
+
+  // Check notification queue in background (non-blocking)
+  Future.microtask(() => _checkNotificationQueue());
+
+  runApp(const MyApp());
 }
 
 /// Check notification queue in background
