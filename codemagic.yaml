@@ -1,0 +1,34 @@
+workflows:
+  ios-sideload:
+    name: Sideloadable iOS Profile Build
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Fetch Flutter dependencies
+        script: |
+          flutter packages pub get
+      - name: Build iOS Application (AOT)
+        script: |
+          # Build Profile mode to avoid "Debug App" screen
+          flutter build ios --profile --no-codesign
+      - name: Native macOS Ad-Hoc Signing (SIGTRAP Fix)
+        script: |
+          # Fixes "Unable to extract info plist from binary" or Sideloadly/Scarlet corruption
+          cd build/ios/iphoneos
+          # Construct Mach-O code directories inside all frameworks using native Apple tools
+          find Runner.app -name "*.framework" -type d -exec codesign --force --sign - --timestamp=none {} \;
+          # Sign the AOT payload specifically
+          codesign --force --sign - --timestamp=none Runner.app/Frameworks/App.framework/App
+          # Sign the main bundle
+          codesign --force --sign - --timestamp=none Runner.app
+      - name: Package directly into IPA
+        script: |
+          # Create the final IPA format so the user doesn't have to compress it themselves
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r -q Mikrotik-Monitor.ipa Payload
+    artifacts:
+      - build/ios/iphoneos/Mikrotik-Monitor.ipa
