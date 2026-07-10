@@ -85,7 +85,7 @@ class GenieACSService {
 
   /// Get all devices with query parameters
   Future<List<Map<String, dynamic>>> getDevices({
-    int limit = 100,
+    int limit = 1000,
     int skip = 0,
     String query = '',
   }) async {
@@ -94,6 +94,9 @@ class GenieACSService {
       final queryParams = <String, String>{};
       if (limit > 0) queryParams['limit'] = limit.toString();
       if (skip > 0) queryParams['skip'] = skip.toString();
+      
+      // Request projection agar list tabel WAN, WLAN, dan LAN dikirim oleh server ACS
+      queryParams['projection'] = '_id,_lastInform,_registered,_tags,VirtualParameters,InternetGatewayDevice.WANDevice,InternetGatewayDevice.LANDevice,InternetGatewayDevice.DeviceInfo,Device.WANDevice,Device.LANDevice,Device.DeviceInfo';
       
       final uri = Uri.parse('$baseUrl/devices');
       final urlWithParams = uri.replace(queryParameters: queryParams);
@@ -372,6 +375,138 @@ class GenieACSService {
       };
       return await executeTask(deviceId, task);
     } catch (e) {
+      return false;
+    }
+  }
+
+  /// Ganti nama WiFi (SSID) untuk instance WLAN tertentu
+  /// [wlanIndex] adalah nomor instance WLANConfiguration (1, 2, 3, 4, ...)
+  Future<bool> changeSSID(String deviceId, int wlanIndex, String newSSID, {bool? enable}) async {
+    try {
+      print('[GenieACS] Changing SSID[$wlanIndex] for device: $deviceId → $newSSID');
+      final parameters = [
+        [
+          'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.SSID',
+          newSSID,
+          'xsd:string',
+        ]
+      ];
+      
+      if (enable != null) {
+        parameters.add([
+          'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.Enable',
+          enable.toString(),
+          'xsd:boolean',
+        ]);
+      }
+
+      final task = {
+        'name': 'setParameterValues',
+        'parameterValues': parameters,
+      };
+      return await executeTask(deviceId, task);
+    } catch (e) {
+      print('[GenieACS] Error changing SSID: $e');
+      return false;
+    }
+  }
+
+  /// Ganti password WiFi untuk instance WLAN tertentu
+  /// Mengubah KeyPassphrase di WLANConfiguration dan PreSharedKey.1
+  Future<bool> changeWifiPassword(String deviceId, int wlanIndex, String newPassword) async {
+    try {
+      print('[GenieACS] Changing WiFi password[$wlanIndex] for device: $deviceId');
+      final task = {
+        'name': 'setParameterValues',
+        'parameterValues': [
+          [
+            'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.KeyPassphrase',
+            newPassword,
+            'xsd:string',
+          ],
+          [
+            'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.PreSharedKey.1.KeyPassphrase',
+            newPassword,
+            'xsd:string',
+          ],
+        ],
+      };
+      return await executeTask(deviceId, task);
+    } catch (e) {
+      print('[GenieACS] Error changing WiFi password: $e');
+      return false;
+    }
+  }
+
+  /// Mengubah kredensial PPPoE (Username & Password) di TR-069
+  Future<bool> changePPPoECredentials(String deviceId, String basePath, String username, String password) async {
+    try {
+      print('[GenieACS] Changing PPPoE Credentials at $basePath for device: $deviceId');
+      final task = {
+        'name': 'setParameterValues',
+        'parameterValues': [
+          [
+            '$basePath.Username',
+            username,
+            'xsd:string',
+          ],
+          [
+            '$basePath.Password',
+            password,
+            'xsd:string',
+          ],
+        ],
+      };
+      return await executeTask(deviceId, task);
+    } catch (e) {
+      print('[GenieACS] Error changing PPPoE credentials: $e');
+      return false;
+    }
+  }
+
+  /// Ganti SSID dan password WiFi sekaligus dalam satu task
+  Future<bool> changeSSIDAndPassword(
+    String deviceId,
+    int wlanIndex,
+    String newSSID,
+    String newPassword,
+    {bool? enable}
+  ) async {
+    try {
+      print('[GenieACS] Changing SSID+Password[$wlanIndex] for device: $deviceId');
+      final parameters = [
+        [
+          'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.SSID',
+          newSSID,
+          'xsd:string',
+        ],
+        [
+          'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.KeyPassphrase',
+          newPassword,
+          'xsd:string',
+        ],
+        [
+          'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.PreSharedKey.1.KeyPassphrase',
+          newPassword,
+          'xsd:string',
+        ],
+      ];
+      
+      if (enable != null) {
+        parameters.add([
+          'InternetGatewayDevice.LANDevice.1.WLANConfiguration.$wlanIndex.Enable',
+          enable.toString(),
+          'xsd:boolean',
+        ]);
+      }
+
+      final task = {
+        'name': 'setParameterValues',
+        'parameterValues': parameters,
+      };
+      return await executeTask(deviceId, task);
+    } catch (e) {
+      print('[GenieACS] Error changing SSID and password: $e');
       return false;
     }
   }
@@ -883,6 +1018,206 @@ class DeviceInfoExtractor {
     if (activeCount <= 5) return '$activeCount Normal';
     if (activeCount <= 10) return '$activeCount Medium';
     return '$activeCount Over';
+  }
+
+
+  static String getLinkType(Map<String, dynamic> device) {
+    final virtualParams = device['VirtualParameters'];
+    if (virtualParams != null && virtualParams is Map<String, dynamic>) {
+      final linkObj = virtualParams['LinkType'] ?? virtualParams['Link Type'];
+      if (linkObj != null) {
+        if (linkObj is Map<String, dynamic>) {
+          final link = linkObj['_value'];
+          if (link != null) return link.toString();
+        } else {
+          return linkObj.toString();
+        }
+      }
+    }
+    return '-';
+  }
+
+  static String getPPPoEPassword(Map<String, dynamic> device) {
+    final virtualParams = device['VirtualParameters'];
+    if (virtualParams != null && virtualParams is Map<String, dynamic>) {
+      final pppoePassObj = virtualParams['pppoePassword'] ?? virtualParams['PPPoE Password'];
+      if (pppoePassObj != null) {
+        if (pppoePassObj is Map<String, dynamic>) {
+          final pppoePass = pppoePassObj['_value'];
+          if (pppoePass != null) return pppoePass.toString();
+        } else {
+          return pppoePassObj.toString();
+        }
+      }
+    }
+    
+    return _getNestedValue(device, [
+      'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Password._value',
+      'Device.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Password._value'
+    ]) ?? '-';
+  }
+
+  static String getWifiPassword(Map<String, dynamic> device) {
+    final virtualParams = device['VirtualParameters'];
+    if (virtualParams != null && virtualParams is Map<String, dynamic>) {
+      final wifiPassObj = virtualParams['wifi_password'] ?? virtualParams['WiFi Password'];
+      if (wifiPassObj != null) {
+        if (wifiPassObj is Map<String, dynamic>) {
+          final wifiPass = wifiPassObj['_value'];
+          if (wifiPass != null) return wifiPass.toString();
+        } else {
+          return wifiPassObj.toString();
+        }
+      }
+    }
+
+    return _getNestedValue(device, [
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase._value',
+      'Device.LANDevice.1.WLANConfiguration.1.KeyPassphrase._value'
+    ]) ?? '-';
+  }
+
+  /// Mengekstrak WLAN / SSIDs yang ada
+  static List<Map<String, String>> getSSIDList(Map<String, dynamic> device) {
+    final List<Map<String, String>> ssids = [];
+    
+    dynamic wlanContainer = _getRawNested(device, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration');
+    
+    if (wlanContainer is Map) {
+      wlanContainer.forEach((key, wlanNode) {
+        if (key.startsWith('_')) return;
+        if (wlanNode is Map) {
+          final enable = _getLeafValue(wlanNode, 'Enable');
+          final ssid = _getLeafValue(wlanNode, 'SSID');
+          final security = _getLeafValue(wlanNode, 'BeaconType') ?? 'Unknown';
+          final password = _getLeafValue(wlanNode, 'KeyPassphrase') ?? '-';
+          final preSharedKeyMap = _getRawNested(wlanNode, 'PreSharedKey.1');
+          
+          String finalPassword = password;
+          if (password == '-' && preSharedKeyMap is Map) {
+            finalPassword = _getLeafValue(preSharedKeyMap, 'PreSharedKey') ?? '-';
+          }
+          
+          if (ssid != null) {
+            ssids.add({
+              'index': key.toString(), // nomor instance WLANConfiguration (1,2,3,4)
+              'enable': enable != null && (enable == '1' || enable.toLowerCase() == 'true') ? 'TRUE' : 'FALSE',
+              'ssid': ssid,
+              'security': security,
+              'password': finalPassword,
+            });
+          }
+        }
+      });
+    }
+    return ssids;
+  }
+
+  /// Mengekstrak LAN Hosts / Perangkat terkoneksi
+  static List<Map<String, String>> getLanHosts(Map<String, dynamic> device) {
+    final List<Map<String, String>> hosts = [];
+    
+    dynamic hostContainer = _getRawNested(device, 'InternetGatewayDevice.LANDevice.1.Hosts.Host');
+    
+    if (hostContainer is Map) {
+      hostContainer.forEach((key, hostNode) {
+        if (key.startsWith('_')) return;
+        if (hostNode is Map) {
+          final hostname = _getLeafValue(hostNode, 'HostName');
+          final ip = _getLeafValue(hostNode, 'IPAddress');
+          final mac = _getLeafValue(hostNode, 'MACAddress');
+          final type = _getLeafValue(hostNode, 'InterfaceType');
+          final active = _getLeafValue(hostNode, 'Active');
+          
+          hosts.add({
+            'hostname': hostname ?? 'blank',
+            'ip': ip ?? '-',
+            'mac': mac ?? '-',
+            'type': type ?? 'Unknown',
+            'active': active == '1' || active == 'true' ? 'Yes' : 'No'
+          });
+        }
+      });
+    }
+
+    return hosts;
+  }
+
+  /// Mengekstrak WAN Profiles
+  static List<Map<String, String>> getWanProfiles(Map<String, dynamic> device) {
+    final List<Map<String, String>> wanList = [];
+    
+    // Iterate through WANConnectionDevice.*
+    dynamic wanDev = _getRawNested(device, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice');
+    if (wanDev is Map) {
+      wanDev.forEach((connDevIdx, connDevNode) {
+        if (connDevIdx.startsWith('_')) return;
+        if (connDevNode is Map) {
+          // Check for WANPPPConnection
+          if (connDevNode.containsKey('WANPPPConnection') && connDevNode['WANPPPConnection'] is Map) {
+            connDevNode['WANPPPConnection'].forEach((pppIdx, pppNode) {
+              if (!pppIdx.toString().startsWith('_') && pppNode is Map) {
+                final path = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.$connDevIdx.WANPPPConnection.$pppIdx';
+                wanList.add(_parseWanNode(pppNode, 'PPPoE_Routed', path));
+              }
+            });
+          }
+          // Check for WANIPConnection
+          if (connDevNode.containsKey('WANIPConnection') && connDevNode['WANIPConnection'] is Map) {
+            connDevNode['WANIPConnection'].forEach((ipIdx, ipNode) {
+              if (!ipIdx.toString().startsWith('_') && ipNode is Map) {
+                final path = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.$connDevIdx.WANIPConnection.$ipIdx';
+                wanList.add(_parseWanNode(ipNode, 'IP_Routed', path));
+              }
+            });
+          }
+        }
+      });
+    }
+
+    return wanList;
+  }
+
+  static Map<String, String> _parseWanNode(Map node, String type, String path) {
+    final enable = _getLeafValue(node, 'Enable');
+    final name = _getLeafValue(node, 'Name');
+    final ip = _getLeafValue(node, 'ExternalIPAddress');
+    final username = _getLeafValue(node, 'Username');
+    final password = _getLeafValue(node, 'Password');
+    final nat = _getLeafValue(node, 'NATEnabled');
+    final vlan = _getLeafValue(node, 'VLANIDMark');
+
+    return {
+      'path': path,
+      'name': name ?? 'blank',
+      'enable': enable == '1' || enable == 'true' ? 'TRUE' : 'FALSE',
+      'type': type,
+      'ip': ip ?? '-',
+      'username': username ?? '-',
+      'password': password ?? '-',
+      'nat': nat == '1' || nat == 'true' ? 'TRUE' : 'FALSE',
+      'vlan': vlan ?? '0'
+    };
+  }
+
+  static dynamic _getRawNested(Map data, String path) {
+    final keys = path.split('.');
+    dynamic current = data;
+    for (var key in keys) {
+      if (current is Map && current.containsKey(key)) {
+        current = current[key];
+      } else {
+        return null;
+      }
+    }
+    return current;
+  }
+
+  static String? _getLeafValue(Map node, String key) {
+    if (node.containsKey(key) && node[key] is Map && node[key].containsKey('_value')) {
+      return node[key]['_value'].toString();
+    }
+    return null;
   }
 }
 

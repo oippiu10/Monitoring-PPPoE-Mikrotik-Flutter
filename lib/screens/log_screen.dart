@@ -531,38 +531,44 @@ class _LogScreenState extends State<LogScreen> {
             ),
           ],
         ),
-        body: RefreshIndicator(
-          onRefresh: _handleRefresh,
-          child: _isLoading && _logs.isEmpty
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+        body: _isLoading && _logs.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _handleRefresh,
+                child: _error != null
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                          Icon(
-                            Icons.error_outline,
-                            size: 48,
-                            color: Colors.red[300],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Error: $_error',
-                            style: TextStyle(
-                              color: Colors.red[300],
-                              fontSize: 16,
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.7,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 48,
+                                  color: Colors.red[300],
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Error: $_error',
+                                  style: TextStyle(
+                                    color: Colors.red[300],
+                                    fontSize: 16,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: _handleRefresh,
+                                  child: const Text('Try Again'),
+                                ),
+                              ],
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: _handleRefresh,
-                            child: const Text('Try Again'),
                           ),
                         ],
-                      ),
-                    )
-                  : _logs.isEmpty
+                      )
+                    : _logs.isEmpty
                       ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: [

@@ -1164,12 +1164,13 @@ class _MonthlyPaymentDetailScreenState extends State<MonthlyPaymentDetailScreen>
                                 locale: 'id_ID',
                                 symbol: 'Rp ',
                                 decimalDigits: 0)
-                            .format(payments.fold<double>(
-                                0,
-                                (sum, p) =>
-                                    sum +
-                                    (double.tryParse(p['amount'].toString()) ??
-                                        0))),
+                            .format(payments
+                                  .where((p) => p['method']?.toString().toLowerCase() != 'titipan')
+                                  .fold<double>(
+                                      0,
+                                      (sum, p) =>
+                                          sum +
+                                          (double.tryParse(p['amount']?.toString() ?? '0') ?? 0))),
                         alignRight: true,
                         isHeader: true),
                   ],
@@ -1496,8 +1497,11 @@ class _MonthlyPaymentDetailScreenState extends State<MonthlyPaymentDetailScreen>
                   }
 
                   final payments = snapshot.data!;
-                  final totalAmount = payments.fold<double>(0.0, (sum, p) {
-                    return sum + (double.tryParse(p['amount'].toString()) ?? 0);
+                  final totalAmount = payments
+                      .where((p) => p['method']?.toString().toLowerCase() != 'titipan')
+                      .fold<double>(0.0, (sum, p) {
+                    return sum +
+                        (double.tryParse(p['amount']?.toString() ?? '0') ?? 0);
                   });
 
                   return Column(

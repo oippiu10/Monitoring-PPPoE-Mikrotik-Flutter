@@ -28,7 +28,9 @@ try {
     // Summary: Ringkasan pembayaran per bulan/tahun
     if ($action === 'summary') {
         // Query summary pembayaran per bulan/tahun
-        $sql = "SELECT payment_month, payment_year, SUM(amount) as total, COUNT(*) as count 
+        $sql = "SELECT payment_month, payment_year, 
+                       SUM(CASE WHEN method != 'titipan' THEN amount ELSE 0 END) as total, 
+                       COUNT(CASE WHEN method != 'titipan' THEN 1 ELSE NULL END) as count 
                 FROM payments 
                 WHERE router_id = ?
                 GROUP BY payment_year, payment_month 

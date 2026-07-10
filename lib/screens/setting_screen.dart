@@ -2,17 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/gradient_container.dart';
 import 'package:flutter/services.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
 
-import '../widgets/update_dialog.dart';
-import '../services/update_service.dart';
 import '../services/api_service.dart';
 import '../services/log_service.dart';
 import '../services/log_sync_service.dart';
 import '../providers/router_session_provider.dart';
 import 'message_template_screen.dart';
+import '../services/update_service.dart';
+import '../widgets/update_dialog.dart';
 
 class SettingScreen extends StatefulWidget {
   const SettingScreen({Key? key}) : super(key: key);
@@ -26,7 +25,6 @@ class _SettingScreenState extends State<SettingScreen> {
   String _currentPort = '';
   String _currentUsername = '';
   String _currentUserGroup = '';
-  String _appVersion = '';
   bool _showNotifications = true;
   bool _loadingGroup = false;
 
@@ -34,15 +32,6 @@ class _SettingScreenState extends State<SettingScreen> {
   void initState() {
     super.initState();
     _loadCurrentSettings();
-    _loadAppVersion();
-  }
-
-  Future<void> _loadAppVersion() async {
-    final packageInfo = await PackageInfo.fromPlatform();
-    if (!mounted) return;
-    setState(() {
-      _appVersion = packageInfo.version;
-    });
   }
 
   Future<void> _loadCurrentSettings() async {
@@ -433,8 +422,6 @@ class _SettingScreenState extends State<SettingScreen> {
                         },
                         color: isDark ? Colors.blueGrey[700] : Colors.blueGrey,
                       ),
-                      const SizedBox(height: 12),
-                      _buildUpdateCheckButton(isDark),
                     ],
                   ),
                 ),
@@ -490,6 +477,52 @@ class _SettingScreenState extends State<SettingScreen> {
                 ),
               ),
               */
+              const SizedBox(height: 16),
+
+              // App Update Section
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.system_update,
+                            color: Colors.blue,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'App Update',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Cek ketersediaan update aplikasi terbaru',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDark ? Colors.white70 : Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildUpdateCheckButton(isDark),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
 
               // Logout Button
@@ -578,100 +611,6 @@ class _SettingScreenState extends State<SettingScreen> {
     );
   }
 
-  Widget _buildUpdateCheckButton(bool isDark) {
-    return InkWell(
-      onTap: _checkForUpdates,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: isDark ? Colors.white24 : Colors.black12,
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.system_update,
-              size: 20,
-              color: isDark ? Colors.white70 : Colors.black54,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Check for Updates',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-            const Spacer(),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: isDark ? Colors.white38 : Colors.black38,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _checkForUpdates() async {
-    try {
-      // Show loading dialog
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-
-      // Check for updates
-      final updateInfo = await UpdateService.checkForUpdate();
-
-      // Close loading dialog
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      // Show update dialog if available
-      if (updateInfo.updateAvailable && mounted) {
-        await showDialog(
-          context: context,
-          builder: (context) => UpdateDialog(
-            updateInfo: updateInfo,
-            isRequired: updateInfo.updateRequired,
-          ),
-        );
-      } else if (mounted) {
-        // Already up to date
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Aplikasi sudah menggunakan versi terbaru!'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      // Close loading dialog if still open
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      // Show error
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal memeriksa update: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
 
   /*
   Future<void> _showDeleteDataDialog(BuildContext context) async {
@@ -965,6 +904,101 @@ class _SettingScreenState extends State<SettingScreen> {
       if (!mounted) return;
 
       Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+    }
+  }
+
+  Widget _buildUpdateCheckButton(bool isDark) {
+    return InkWell(
+      onTap: _checkForUpdates,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isDark ? Colors.white24 : Colors.black12,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.system_update,
+              size: 20,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Check for Updates',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            const Spacer(),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      // Show loading dialog
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Check for updates
+      final updateInfo = await UpdateService.checkForUpdate();
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show update dialog if available
+      if (updateInfo.updateAvailable && mounted) {
+        await showDialog(
+          context: context,
+          builder: (context) => UpdateDialog(
+            updateInfo: updateInfo,
+            isRequired: updateInfo.updateRequired,
+          ),
+        );
+      } else if (mounted) {
+        // Already up to date
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Aplikasi sudah menggunakan versi terbaru!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memeriksa update: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }

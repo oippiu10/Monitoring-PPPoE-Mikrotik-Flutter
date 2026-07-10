@@ -20,6 +20,7 @@ import 'screens/database_sync_screen.dart';
 import 'screens/system_logs_screen.dart';
 import 'screens/initial_config_screen.dart';
 import 'screens/customer_map_screen.dart';
+import 'screens/expense_screen.dart';
 // import 'screens/changelog_screen.dart'; // Remove this import
 import 'providers/mikrotik_provider.dart';
 import 'providers/router_session_provider.dart';
@@ -297,6 +298,9 @@ class MyApp extends StatelessWidget {
               '/odp': (context) => const ODPScreen(),
               '/billing': (context) =>
                   const BillingScreen(), // Ganti userId sesuai kebutuhan
+              '/expense': (context) => const MikrotikScreenWrapper(
+                    child: ExpenseScreen(),
+                  ),
               '/genieacs': (context) => const MikrotikScreenWrapper(
                     child: GenieACSScreen(),
                   ),

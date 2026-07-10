@@ -24,6 +24,9 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
   Timer? _searchDebounce;
   Timer? _updateTimer;
 
+  bool _isSelectionMode = false;
+  final Set<String> _selectedDeviceIds = {};
+
   // Filter and sort options
   String _sortOption = 'Last Inform (Newest)';
   String _statusFilter = 'Semua';
@@ -120,6 +123,92 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _summonSelectedDevices() async {
+    if (_selectedDeviceIds.isEmpty) return;
+
+    final targetIds = _selectedDeviceIds.toList();
+    setState(() {
+      _isSelectionMode = false;
+      _selectedDeviceIds.clear();
+    });
+
+    int successCount = 0;
+    int progress = 0;
+    StateSetter? dialogSetState;
+    bool isDialogClosed = false;
+
+    // Background runner
+    Future<void> runBatch() async {
+      for (var id in targetIds) {
+        if (isDialogClosed) break; // safeguard
+        try {
+          bool result = await _service!.refreshConnection(id);
+          if (result) successCount++;
+        } catch (e) {
+          // ignore
+        }
+
+        progress++;
+        // Update dialog state if still active
+        if (dialogSetState != null && !isDialogClosed && mounted) {
+          dialogSetState!(() {});
+        }
+
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      isDialogClosed = true;
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    // FIRE the background function immediately
+    runBatch();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            dialogSetState = setDialogState;
+
+            return WillPopScope(
+              onWillPop: () async => false,
+              child: AlertDialog(
+                title: const Text('Summon Devices'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(
+                        'Memproses $progress dari ${targetIds.length} device...'),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    isDialogClosed = true; // force boundary just in case
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Summon selesai. $successCount berhasil dari ${targetIds.length}.'),
+          backgroundColor:
+              successCount == targetIds.length ? Colors.green : Colors.orange,
+        ),
+      );
+      _manualRefresh();
     }
   }
 
@@ -375,138 +464,234 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
 
   void _showChangePasswordDialog(Map<String, dynamic> device) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Ekstrak profil WLAN via helper untuk mencakup semua interface
+    final List<Map<String, String>> ssidList =
+        DeviceInfoExtractor.getSSIDList(device);
+    Map<int, String> availableSsids = {};
+    Map<int, bool> availableStatuses = {};
+
+    for (var wlan in ssidList) {
+      int idx = int.tryParse(wlan['index'] ?? '1') ?? 1;
+      availableSsids[idx] = wlan['ssid'] ?? '-';
+      availableStatuses[idx] = wlan['enable'] == 'TRUE';
+    }
+
+    // Berikan default jika tidak ada yang ditemukan
+    if (availableSsids.isEmpty) {
+      availableSsids[1] = '-';
+      availableStatuses[1] = true;
+    }
+
+    int selectedWlanIndex = availableSsids.keys.first;
+    final ssidController = TextEditingController(
+        text: availableSsids[selectedWlanIndex] != '-'
+            ? availableSsids[selectedWlanIndex]
+            : '');
     final passwordController = TextEditingController();
+
+    bool getWifiStatus(int index) {
+      return availableStatuses[index] ?? false;
+    }
+
+    bool wifiEnabled = getWifiStatus(selectedWlanIndex);
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Row(
-          children: [
-            const Icon(Icons.lock, color: Colors.blue),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Ganti Password',
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Device: ${DeviceInfoExtractor.getPPPoEUsername(device)}',
-              style: TextStyle(
-                fontSize: 14,
-                color: isDark ? Colors.white70 : Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Password Baru',
-                hintText: 'Masukkan password baru',
-                prefixIcon: const Icon(Icons.lock_outline),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Batal',
-              style: TextStyle(
-                color: isDark ? Colors.white70 : Colors.black54,
-              ),
-            ),
-          ),
-          ElevatedButton.icon(
-            onPressed: () async {
-              if (passwordController.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password tidak boleh kosong'),
-                    backgroundColor: Colors.orange,
+      barrierDismissible: false,
+      builder: (context) {
+        bool isLoading = false;
+
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.wifi, color: Colors.blue),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Konfigurasi WiFi',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
-                );
-                return;
-              }
-
-              Navigator.pop(context);
-
-              // Show loading
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) => Center(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text('Mengganti password...'),
-                        ],
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Device: ${DeviceInfoExtractor.getPPPoEUsername(device)}',
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : Colors.black54),
+                  ),
+                  const SizedBox(height: 16),
+                  // Dropdown Selector
+                  if (availableSsids.length > 1) ...[
+                    DropdownButtonFormField<int>(
+                      isExpanded: true,
+                      value: selectedWlanIndex,
+                      decoration: InputDecoration(
+                        labelText: 'Pilih Profil WiFi',
+                        prefixIcon: const Icon(Icons.router),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade100,
                       ),
+                      items: availableSsids.entries
+                          .map((e) => DropdownMenuItem(
+                                value: e.key,
+                                child: Text('WLAN ${e.key}: ${e.value}',
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDialogState(() {
+                            selectedWlanIndex = val;
+                            ssidController.text = availableSsids[val] != '-'
+                                ? availableSsids[val]!
+                                : '';
+                            wifiEnabled = getWifiStatus(val);
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  TextField(
+                    controller: ssidController,
+                    decoration: InputDecoration(
+                      labelText: 'Nama WiFi (SSID)',
+                      prefixIcon: const Icon(Icons.wifi_tethering),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor:
+                          isDark ? Colors.grey.shade800 : Colors.grey.shade100,
                     ),
                   ),
-                ),
-              );
-
-              final success = await _service!.changePassword(
-                DeviceInfoExtractor.getDeviceId(device),
-                passwordController.text,
-              );
-
-              if (mounted) {
-                Navigator.pop(context); // Close loading dialog
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success
-                          ? 'Password berhasil diganti'
-                          : 'Gagal mengganti password',
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'Password Baru',
+                      hintText: 'Biarkan kosong jika tidak diganti',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor:
+                          isDark ? Colors.grey.shade800 : Colors.grey.shade100,
                     ),
-                    backgroundColor: success ? Colors.green : Colors.red,
                   ),
-                );
-
-                if (success) {
-                  // Refresh data after password change
-                  await _manualRefresh();
-                }
-              }
-            },
-            icon: const Icon(Icons.check),
-            label: const Text('Ganti'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Enable SSID'),
+                    subtitle: Text(wifiEnabled ? 'Aktif' : 'Mati',
+                        style: const TextStyle(fontSize: 12)),
+                    value: wifiEnabled,
+                    activeColor: Colors.blue,
+                    onChanged: (val) {
+                      setDialogState(() {
+                        wifiEnabled = val;
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+            actions: [
+              if (!isLoading)
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Tutup',
+                      style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.black54)),
+                ),
+              ElevatedButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        if (ssidController.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('SSID tidak boleh kosong',
+                                      style: TextStyle(color: Colors.white)),
+                                  backgroundColor: Colors.red));
+                          return;
+                        }
+                        if (passwordController.text.trim().isNotEmpty &&
+                            passwordController.text.trim().length < 8) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Password minimal 8 karakter',
+                                      style: TextStyle(color: Colors.white)),
+                                  backgroundColor: Colors.red));
+                          return;
+                        }
+
+                        setDialogState(() {
+                          isLoading = true;
+                        });
+                        final deviceId =
+                            DeviceInfoExtractor.getDeviceId(device);
+
+                        bool success = await _service!.changeSSIDAndPassword(
+                          deviceId,
+                          selectedWlanIndex,
+                          ssidController.text.trim(),
+                          passwordController.text.trim().isNotEmpty
+                              ? passwordController.text.trim()
+                              : '',
+                          enable: wifiEnabled,
+                        );
+
+                        if (mounted) {
+                          setDialogState(() {
+                            isLoading = false;
+                          });
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(success
+                                  ? 'WiFi berhasil diubah!'
+                                  : 'Gagal mengirim perintah!'),
+                              backgroundColor:
+                                  success ? Colors.green : Colors.red,
+                            ),
+                          );
+                          if (success) _manualRefresh();
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : const Text('Simpan',
+                        style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        });
+      },
     );
   }
 
@@ -540,8 +725,16 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const Icon(Icons.devices, size: 28),
-                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child:
+                        const Icon(Icons.router, size: 28, color: Colors.blue),
+                  ),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -549,25 +742,77 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
                         Text(
                           'Device Details',
                           style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
                             color: isDark ? Colors.white : Colors.black87,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          DeviceInfoExtractor.getPPPoEUsername(device),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDark ? Colors.white70 : Colors.black54,
-                          ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(Icons.person,
+                                size: 14,
+                                color: isDark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                DeviceInfoExtractor.getPPPoEUsername(device),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? Colors.grey.shade300
+                                      : Colors.grey.shade700,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _getStatusColorForValue(
+                                        DeviceInfoExtractor.getConnectionStatus(
+                                            device),
+                                        isDark)
+                                    .withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                DeviceInfoExtractor.getConnectionStatus(device),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _getStatusColorForValue(
+                                      DeviceInfoExtractor.getConnectionStatus(
+                                          device),
+                                      isDark),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color:
+                          isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      color: isDark ? Colors.white70 : Colors.black54,
+                      onPressed: () => Navigator.pop(context),
+                      tooltip: 'Tutup',
+                    ),
                   ),
                 ],
               ),
@@ -583,19 +828,25 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
                     // Virtual Parameters section (moved to top)
                     _buildDetailSection(
                       'Virtual Parameters',
-                      DeviceInfoExtractor.getVirtualParameters(device)
-                          .entries
-                          .map((entry) {
+                      _buildGridRows(
+                          DeviceInfoExtractor.getVirtualParameters(device)
+                              .entries
+                              .toList()
+                              .asMap()
+                              .entries
+                              .map((entry) {
+                        final indexNumber = entry.key + 1;
                         final displayName =
-                            _formatVirtualParameterName(entry.key);
-                        return _buildDetailRow(displayName, entry.value);
-                      }).toList(),
+                            _formatVirtualParameterName(entry.value.key);
+                        return _buildDetailRow(
+                            '$indexNumber. $displayName', entry.value.value);
+                      }).toList()),
                       isDark,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     _buildDetailSection(
                       'Device Information',
-                      [
+                      _buildGridRows([
                         _buildDetailRow('Device ID',
                             DeviceInfoExtractor.getDeviceId(device)),
                         _buildDetailRow('Serial Number',
@@ -608,19 +859,30 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
                             DeviceInfoExtractor.getProductClass(device)),
                         _buildDetailRow(
                             'OUI', DeviceInfoExtractor.getOUI(device)),
-                      ],
+                      ]),
                       isDark,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     _buildDetailSection(
                       'Network',
-                      [
+                      _buildGridRows([
                         _buildDetailRow('Status',
                             DeviceInfoExtractor.getConnectionStatus(device)),
                         _buildDetailRow('Last Inform',
                             DeviceInfoExtractor.getLastInform(device)),
                         _buildDetailRow('IP Address',
                             DeviceInfoExtractor.getIPAddress(device) ?? '-'),
+                        _buildDetailRow('PPPoE Username',
+                            DeviceInfoExtractor.getPPPoEUsername(device),
+                            onTap: () {
+                          Navigator.pop(context); // close details modal first
+                          _showEditPPPoEDialog(device);
+                        }, showEditIcon: true),
+                        _buildDetailRow('PPPoE Password', '*** (Tap Edit)',
+                            onTap: () {
+                          Navigator.pop(context); // close details modal first
+                          _showEditPPPoEDialog(device);
+                        }, showEditIcon: true),
                         _buildDetailRow(
                             'PPPoE IP', DeviceInfoExtractor.getPPPoEIP(device)),
                         _buildDetailRow('PPPoE MAC',
@@ -629,13 +891,13 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
                             'SSID', DeviceInfoExtractor.getSSID(device)),
                         _buildDetailRow('MAC Address',
                             DeviceInfoExtractor.getMACAddress(device)),
-                      ],
+                      ]),
                       isDark,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     _buildDetailSection(
                       'Status & Performance',
-                      [
+                      _buildGridRows([
                         _buildDetailRow('RX Power',
                             DeviceInfoExtractor.getRXPowerWithStatus(device)),
                         _buildDetailRow(
@@ -650,13 +912,13 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
                             DeviceInfoExtractor.getPPPoEUptime(device)),
                         _buildDetailRow(
                             'PON Mode', DeviceInfoExtractor.getPONMode(device)),
-                      ],
+                      ]),
                       isDark,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     _buildDetailSection(
                       'Firmware',
-                      [
+                      _buildGridRows([
                         _buildDetailRow(
                             'Firmware',
                             DeviceInfoExtractor.getFirmwareVersion(device) ??
@@ -665,21 +927,21 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
                             'Hardware',
                             DeviceInfoExtractor.getHardwareVersion(device) ??
                                 '-'),
-                      ],
+                      ]),
                       isDark,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     _buildDetailSection(
                       'Timing',
-                      [
+                      _buildGridRows([
                         _buildDetailRow('Registered',
                             DeviceInfoExtractor.getRegisteredTime(device)),
                         _buildDetailRow('Last Communication',
                             DeviceInfoExtractor.getLastCommunication(device)),
-                      ],
+                      ]),
                       isDark,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     if (DeviceInfoExtractor.getTags(device).isNotEmpty)
                       _buildDetailSection(
                         'Tags',
@@ -696,6 +958,132 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
                         ],
                         isDark,
                       ),
+
+                    const SizedBox(height: 12),
+                    _buildTableSection(
+                      'WLAN Configuration (${DeviceInfoExtractor.getSSIDList(device).length})',
+                      ['No.', 'Enable', 'SSID', 'Security', 'Password'],
+                      DeviceInfoExtractor.getSSIDList(device)
+                          .map((w) => [
+                                w['index']!,
+                                w['enable']!,
+                                w['ssid']!,
+                                w['security']!,
+                                w['password']!
+                              ])
+                          .toList(),
+                      isDark,
+                      inactiveColumnIndex: 1,
+                      inactiveValue: 'FALSE',
+                      headerTrailing: IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        color: Colors.blue,
+                        tooltip: 'Atur WiFi',
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showChangePasswordDialog(device);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTableSection(
+                      'LAN Hosts (${DeviceInfoExtractor.getLanHosts(device).length})',
+                      [
+                        'No.',
+                        'Hostname',
+                        'IP Address',
+                        'MAC Address',
+                        'Type',
+                        'Active'
+                      ],
+                      DeviceInfoExtractor.getLanHosts(device)
+                          .toList()
+                          .asMap()
+                          .entries
+                          .map((e) => [
+                                (e.key + 1).toString(),
+                                e.value['hostname']!,
+                                e.value['ip']!,
+                                e.value['mac']!,
+                                e.value['type']!,
+                                e.value['active']!
+                              ])
+                          .toList(),
+                      isDark,
+                      inactiveColumnIndex: 5,
+                      inactiveValue: 'No',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTableSection(
+                      'WAN Profiles (${DeviceInfoExtractor.getWanProfiles(device).length})',
+                      ['No.', 'Type', 'VLAN', 'IP Address', 'NAT', 'Path'],
+                      DeviceInfoExtractor.getWanProfiles(device)
+                          .toList()
+                          .asMap()
+                          .entries
+                          .map((e) => [
+                                (e.key + 1).toString(),
+                                e.value['type']!,
+                                e.value['vlan']!,
+                                e.value['ip']!,
+                                e.value['nat']!,
+                                e.value['path']!.split('.').last
+                              ])
+                          .toList(),
+                      isDark,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Quick Actions Row
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade600,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        icon: const Icon(Icons.api, size: 22),
+                        label: const Text(
+                          'Summon Perangkat (Refresh Data)',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5),
+                        ),
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(
+                            content: Text(
+                                'Mengirim perintah summon ke perangkat...',
+                                style: TextStyle(color: Colors.white)),
+                            backgroundColor: Colors.blue,
+                          ));
+                          if (_service != null) {
+                            bool success = await _service!.refreshConnection(
+                                DeviceInfoExtractor.getDeviceId(device));
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(
+                                  success
+                                      ? 'Summon berhasil ditarik, merefresh tabel...'
+                                      : 'Gagal melakukan summon',
+                                  style: const TextStyle(color: Colors.white)),
+                              backgroundColor:
+                                  success ? Colors.green : Colors.red,
+                            ));
+                            if (success) _manualRefresh();
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -703,6 +1091,177 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTableSection(
+      String title, List<String> headers, List<List<String>> rows, bool isDark,
+      {Widget? headerTrailing,
+      int? inactiveColumnIndex,
+      String? inactiveValue}) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    bool isExpanded = false;
+    final bool showToggle = rows.length > 2;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        final List<List<String>> visibleRows =
+            (showToggle && !isExpanded) ? rows.take(2).toList() : rows;
+
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left:
+                      BorderSide(color: Colors.blue.withOpacity(0.8), width: 3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  InkWell(
+                    onTap: showToggle
+                        ? () => setState(() => isExpanded = !isExpanded)
+                        : null,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.table_chart,
+                                color: Colors.blue, size: 18),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                          if (showToggle)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4.0),
+                              child: Icon(
+                                isExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: isDark ? Colors.white54 : Colors.black54,
+                                size: 20,
+                              ),
+                            ),
+                          if (headerTrailing != null) headerTrailing,
+                        ],
+                      ),
+                    ),
+                  ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      headingRowHeight: 36,
+                      dataRowMinHeight: 36,
+                      dataRowMaxHeight: 36,
+                      columnSpacing: 16,
+                      horizontalMargin: 12,
+                      headingTextStyle: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                          fontSize: 13),
+                      dataTextStyle: TextStyle(
+                          color: isDark ? Colors.white60 : Colors.black54,
+                          fontSize: 12),
+                      columns: headers
+                          .map((h) => DataColumn(label: Text(h)))
+                          .toList(),
+                      rows: visibleRows.map((row) {
+                        bool isInactive = false;
+                        if (inactiveColumnIndex != null &&
+                            inactiveValue != null &&
+                            inactiveColumnIndex < row.length) {
+                          isInactive =
+                              row[inactiveColumnIndex] == inactiveValue;
+                        }
+                        return DataRow(
+                          cells: row
+                              .map((cell) => DataCell(Text(
+                                    cell,
+                                    style: TextStyle(
+                                      color: isInactive
+                                          ? (isDark
+                                              ? Colors.grey.shade600
+                                              : Colors.grey.shade400)
+                                          : (isDark
+                                              ? Colors.white70
+                                              : Colors.black87),
+                                      fontStyle: isInactive
+                                          ? FontStyle.italic
+                                          : FontStyle.normal,
+                                    ),
+                                  )))
+                              .toList(),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  if (showToggle)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4.0, bottom: 4.0),
+                      child: Center(
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              setState(() => isExpanded = !isExpanded),
+                          icon: Icon(
+                            isExpanded ? Icons.expand_less : Icons.expand_more,
+                            size: 16,
+                          ),
+                          label: Text(
+                            isExpanded
+                                ? 'Lebih Sedikit'
+                                : 'Lihat Selengkapnya (${rows.length - 2} baris)',
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue,
+                            minimumSize: const Size(0, 36),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -744,64 +1303,158 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
         sectionIcon = Icons.category;
     }
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: sectionColor.withOpacity(0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              sectionColor.withOpacity(0.05),
-              Colors.transparent,
-            ],
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: sectionColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(sectionIcon, color: sectionColor, size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                ],
+    bool isExpanded = false;
+    final bool showToggle = children.length > 2;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        final List<Widget> visibleChildren =
+            (showToggle && !isExpanded) ? children.take(2).toList() : children;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              const SizedBox(height: 12),
-              ...children,
             ],
           ),
-        ),
-      ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                      color: sectionColor.withOpacity(0.8), width: 3),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkWell(
+                      onTap: showToggle
+                          ? () => setState(() => isExpanded = !isExpanded)
+                          : null,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: showToggle ? 8.0 : 0),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: sectionColor.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(sectionIcon,
+                                  color: sectionColor, size: 18),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ),
+                            if (showToggle)
+                              Icon(
+                                isExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: isDark ? Colors.white54 : Colors.black54,
+                                size: 20,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...visibleChildren,
+                    if (showToggle)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Center(
+                          child: TextButton.icon(
+                            onPressed: () =>
+                                setState(() => isExpanded = !isExpanded),
+                            icon: Icon(
+                              isExpanded
+                                  ? Icons.expand_less
+                                  : Icons.expand_more,
+                              size: 16,
+                            ),
+                            label: Text(
+                              isExpanded
+                                  ? 'Lebih Sedikit'
+                                  : 'Lihat Selengkapnya (${children.length - 2})',
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: sectionColor,
+                              minimumSize: const Size(0, 36),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  List<Widget> _buildGridRows(List<Widget> items) {
+    List<Widget> rows = [];
+    for (int i = 0; i < items.length; i += 2) {
+      if (i + 1 < items.length) {
+        rows.add(IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: items[i]),
+              const SizedBox(width: 8),
+              Expanded(child: items[i + 1]),
+            ],
+          ),
+        ));
+      } else {
+        rows.add(IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: items[i]),
+              const SizedBox(width: 8),
+              Expanded(child: const SizedBox()), // Empty slot
+            ],
+          ),
+        ));
+      }
+    }
+    return rows;
+  }
+
+  Widget _buildDetailRow(String label, String value,
+      {VoidCallback? onTap, bool showEditIcon = false}) {
+    final isDark =
+        mounted ? Theme.of(context).brightness == Brightness.dark : true;
 
     // Get icon for label
     IconData icon;
@@ -900,8 +1553,25 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
         iconColor = Colors.cyan;
         break;
       default:
-        icon = Icons.label_outline;
-        iconColor = Colors.grey;
+        if (label.contains(RegExp(r'^\d+\.'))) {
+          icon = Icons.tune;
+          // Assign random but consistent color palette based on label hash
+          final colors = [
+            Colors.blue,
+            Colors.purple,
+            Colors.orange,
+            Colors.teal,
+            Colors.cyan,
+            Colors.pink,
+            Colors.deepOrange,
+            Colors.indigo
+          ];
+          iconColor =
+              colors[label.codeUnits.fold(0, (p, c) => p + c) % colors.length];
+        } else {
+          icon = Icons.label_outline;
+          iconColor = Colors.grey;
+        }
     }
 
     // Determine if value needs badge decoration
@@ -919,66 +1589,251 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
         value.toLowerCase().contains('over') ||
         value.toLowerCase().contains('empty');
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(icon, size: 16, color: iconColor),
-          ),
-          const SizedBox(width: 10),
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.white70 : Colors.black54,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Expanded(
-            child: hasStatus && value != '-'
-                ? Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color:
+            isDark ? iconColor.withOpacity(0.12) : iconColor.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color:
+              isDark ? iconColor.withOpacity(0.3) : iconColor.withOpacity(0.2),
+          width: 0.5,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: _getStatusColorForValue(value, isDark)
-                          .withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: _getStatusColorForValue(value, isDark)
-                            .withOpacity(0.3),
-                        width: 1,
-                      ),
+                      color: iconColor.withOpacity(0.15),
+                      shape: BoxShape.circle,
                     ),
+                    child: Icon(icon, size: 14, color: iconColor),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
                     child: Text(
-                      value,
+                      label,
                       style: TextStyle(
-                        fontSize: 13,
-                        color: _getStatusColorForValue(value, isDark),
-                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                  )
-                : Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? Colors.white : Colors.black87,
-                      fontWeight: FontWeight.w500,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: hasStatus && value != '-'
+                        ? Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _getStatusColorForValue(value, isDark)
+                                    .withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: _getStatusColorForValue(value, isDark)
+                                      .withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                value,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _getStatusColorForValue(value, isDark),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Text(
+                            value,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? Colors.white : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                  ),
+                  if (showEditIcon)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 4.0),
+                      child: Icon(Icons.edit, size: 14, color: Colors.blue),
+                    ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  void _showEditPPPoEDialog(Map<String, dynamic> device) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    String currentUsername = DeviceInfoExtractor.getPPPoEUsername(device);
+    if (currentUsername == '-' || currentUsername == 'Unknown')
+      currentUsername = '';
+
+    final usernameController = TextEditingController(text: currentUsername);
+    final passwordController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        bool isLoading = false;
+
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.public, color: Colors.blue),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Ubah Konfigurasi PPPoE',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Device ID: ${DeviceInfoExtractor.getDeviceId(device)}',
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : Colors.black54),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: usernameController,
+                    decoration: InputDecoration(
+                      labelText: 'PPPoE Username Baru',
+                      prefixIcon: const Icon(Icons.person),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor:
+                          isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'PPPoE Password Baru',
+                      hintText: 'Biarkan kosong untuk test API / tanpa passwd',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor:
+                          isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (!isLoading)
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Batal',
+                      style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.black54)),
+                ),
+              ElevatedButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        if (usernameController.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Username tidak boleh kosong',
+                                      style: TextStyle(color: Colors.white)),
+                                  backgroundColor: Colors.red));
+                          return;
+                        }
+
+                        setDialogState(() {
+                          isLoading = true;
+                        });
+                        final deviceId =
+                            DeviceInfoExtractor.getDeviceId(device);
+
+                        bool success = await _service!.changePPPoECredentials(
+                          deviceId,
+                          'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1',
+                          usernameController.text.trim(),
+                          passwordController.text.trim(),
+                        );
+
+                        if (mounted) {
+                          setDialogState(() {
+                            isLoading = false;
+                          });
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(success
+                                  ? 'PPPoE berhasil diupdate!'
+                                  : 'Gagal mengirim perintah!'),
+                              backgroundColor:
+                                  success ? Colors.green : Colors.red,
+                            ),
+                          );
+                          if (success) _manualRefresh();
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : const Text('Simpan',
+                        style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        });
+      },
     );
   }
 
@@ -1084,40 +1939,108 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
     return GradientContainer(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: Colors.white),
-          title: const Text(
-            'GenieACS',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: _isRefreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.refresh),
-              onPressed: _isRefreshing ? null : _manualRefresh,
-              tooltip: 'Refresh',
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                Navigator.pushNamed(context, '/api-config');
-              },
-              tooltip: 'Pengaturan',
-            ),
-          ],
-        ),
+        appBar: _isSelectionMode
+            ? AppBar(
+                backgroundColor:
+                    isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                elevation: 4,
+                leading: IconButton(
+                  icon: Icon(Icons.close,
+                      color: isDark ? Colors.white : Colors.black87),
+                  onPressed: () {
+                    setState(() {
+                      _isSelectionMode = false;
+                      _selectedDeviceIds.clear();
+                    });
+                  },
+                ),
+                title: Text(
+                  '${_selectedDeviceIds.length} Terpilih',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        final currentList = _getFilteredAndSortedDevices();
+                        _selectedDeviceIds.clear();
+                        _selectedDeviceIds.addAll(
+                          currentList.map((d) =>
+                              DeviceInfoExtractor.getDeviceId(d).toString()),
+                        );
+                      });
+                    },
+                    child: const Text('Semua',
+                        style: TextStyle(color: Colors.blue)),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        final currentList = _getFilteredAndSortedDevices();
+                        for (var d in currentList) {
+                          if (DeviceInfoExtractor.getConnectionStatus(d)
+                                  .toLowerCase() ==
+                              'offline') {
+                            _selectedDeviceIds.add(
+                                DeviceInfoExtractor.getDeviceId(d).toString());
+                          }
+                        }
+                      });
+                    },
+                    child: const Text('Offline',
+                        style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              )
+            : AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                iconTheme: const IconThemeData(color: Colors.white),
+                title: const Text(
+                  'GenieACS',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                centerTitle: true,
+                actions: [
+                  IconButton(
+                    icon: _isRefreshing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.refresh),
+                    onPressed: _isRefreshing ? null : _manualRefresh,
+                    tooltip: 'Refresh',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/api-config');
+                    },
+                    tooltip: 'Pengaturan',
+                  ),
+                ],
+              ),
+        floatingActionButton: _isSelectionMode && _selectedDeviceIds.isNotEmpty
+            ? FloatingActionButton.extended(
+                onPressed: _summonSelectedDevices,
+                backgroundColor: Colors.orange,
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                label: Text(
+                  'Summon (${_selectedDeviceIds.length})',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              )
+            : null,
         body: _isLoading && _devices.isEmpty
             ? const Center(
                 child: CircularProgressIndicator(),
@@ -1125,386 +2048,207 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
             : Column(
                 children: [
                   Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (_devices.isEmpty)
-                            Card(
-                              elevation: 2,
-                              color: isDark
-                                  ? const Color(0xFF1E1E1E)
-                                  : Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      Icons.cloud_off,
-                                      size: 64,
-                                      color: Colors.grey,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'Belum Dikonfigurasi',
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Silakan konfigurasi GenieACS di Settings',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: isDark
-                                            ? Colors.white70
-                                            : Colors.black54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
-                          else ...[
-                            // Search and Filter Bar
-                            Row(
+                      child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _searchController,
-                                    onChanged: (value) {
-                                      // Cancel previous debounce timer
-                                      _searchDebounce?.cancel();
-
-                                      // Create new timer to wait for user to stop typing
-                                      _searchDebounce = Timer(
-                                          const Duration(milliseconds: 500),
-                                          () {
-                                        setState(
-                                            () {}); // Rebuild to update filtered list
-                                      });
-                                    },
-                                    decoration: InputDecoration(
-                                      hintText: 'Cari...',
-                                      prefixIcon: const Icon(Icons.search),
-                                      suffixIcon:
-                                          _searchController.text.isNotEmpty
-                                              ? IconButton(
-                                                  icon: const Icon(Icons.clear),
-                                                  onPressed: () {
-                                                    _searchController.clear();
-                                                    setState(() {});
-                                                  },
-                                                )
-                                              : null,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      filled: true,
-                                      fillColor: isDark
-                                          ? Colors.grey.shade900
-                                          : Colors.grey.shade100,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.filter_list,
-                                    color: _statusFilter != 'Semua' ||
-                                            _sortOption !=
-                                                'Last Inform (Newest)' ||
-                                            _rxFilter != 'Semua'
-                                        ? (isDark
-                                            ? Colors.blue.shade300
-                                            : Colors.blue.shade800)
-                                        : (isDark
-                                            ? Colors.grey.shade400
-                                            : Colors.grey.shade600),
-                                  ),
-                                  onPressed: _showFilterDialog,
-                                  tooltip: 'Filter',
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: isDark
-                                        ? Colors.grey.shade900
-                                        : Colors.grey.shade100,
-                                    padding: const EdgeInsets.all(12),
+                                const SizedBox(height: 16),
+                                if (_devices.isEmpty)
+                                  Card(
+                                    elevation: 2,
+                                    color: isDark
+                                        ? const Color(0xFF1E1E1E)
+                                        : Colors.white,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                                        borderRadius:
+                                            BorderRadius.circular(16)),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Column(
+                                        children: [
+                                          const Icon(Icons.cloud_off,
+                                              size: 64, color: Colors.grey),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            'Belum Dikonfigurasi',
+                                            style: TextStyle(
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                                color: isDark
+                                                    ? Colors.white
+                                                    : Colors.black87),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Silakan konfigurasi GenieACS di Settings',
+                                            style: TextStyle(
+                                                fontSize: 14,
+                                                color: isDark
+                                                    ? Colors.white70
+                                                    : Colors.black54),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Devices List
-                            if (_isLoading)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(32.0),
-                                  child: CircularProgressIndicator(),
-                                ),
-                              )
-                            else if (filteredDevices.isEmpty)
-                              Card(
-                                elevation: 2,
-                                color: isDark
-                                    ? const Color(0xFF1E1E1E)
-                                    : Colors.white,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(32.0),
-                                  child: Column(
-                                    children: [
-                                      Icon(
-                                        Icons.search_off,
-                                        size: 64,
-                                        color: isDark
-                                            ? Colors.white38
-                                            : Colors.black38,
-                                      ),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        'Tidak ada device ditemukan',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: isDark
-                                              ? Colors.white70
-                                              : Colors.black54,
+                                  )
+                                else ...[
+                                  // Search and Filter Bar
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? const Color(0xFF1E1E1E)
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black
+                                              .withOpacity(isDark ? 0.2 : 0.05),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            else
-                              ...filteredDevices.map((device) {
-                                return Card(
-                                  elevation: 2,
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  color: isDark
-                                      ? const Color(0xFF1E1E1E)
-                                      : Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: InkWell(
-                                          onTap: () =>
-                                              _showDeviceDetails(device),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(16),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              8),
-                                                      decoration: BoxDecoration(
-                                                        color: _getStatusColor(
-                                                                device)
-                                                            .withOpacity(0.2),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(8),
-                                                      ),
-                                                      child: Icon(
-                                                        Icons.router,
-                                                        color: _getStatusColor(
-                                                            device),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Text(
-                                                            DeviceInfoExtractor
-                                                                .getPPPoEUsername(
-                                                                    device),
-                                                            style: TextStyle(
-                                                              fontSize: 16,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                              color: isDark
-                                                                  ? Colors.white
-                                                                  : Colors
-                                                                      .black87,
-                                                            ),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 2),
-                                                          Text(
-                                                            DeviceInfoExtractor
-                                                                        .getPPPoEIP(
-                                                                            device) !=
-                                                                    '-'
-                                                                ? DeviceInfoExtractor
-                                                                    .getPPPoEIP(
-                                                                        device)
-                                                                : DeviceInfoExtractor
-                                                                    .getModel(
-                                                                        device),
-                                                            style: TextStyle(
-                                                              fontSize: 13,
-                                                              color: isDark
-                                                                  ? Colors
-                                                                      .white70
-                                                                  : Colors
-                                                                      .black54,
-                                                            ),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.wifi_tethering,
-                                                      size: 14,
-                                                      color: isDark
-                                                          ? Colors
-                                                              .orange.shade300
-                                                          : Colors
-                                                              .orange.shade700,
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      'RX: ${DeviceInfoExtractor.getRXPower(device)} dBm',
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        color: isDark
-                                                            ? Colors
-                                                                .orange.shade300
-                                                            : Colors.orange
-                                                                .shade700,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Icon(
-                                                      Icons.info_outline,
-                                                      size: 14,
-                                                      color: isDark
-                                                          ? Colors.white54
-                                                          : Colors.black54,
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    Expanded(
-                                                      child: Text(
-                                                        DeviceInfoExtractor
-                                                            .getLastInform(
-                                                                device),
-                                                        style: TextStyle(
-                                                          fontSize: 11,
+                                      ],
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextField(
+                                            controller: _searchController,
+                                            onChanged: (value) {
+                                              _searchDebounce?.cancel();
+                                              _searchDebounce = Timer(
+                                                  const Duration(
+                                                      milliseconds: 500),
+                                                  () => setState(() {}));
+                                            },
+                                            decoration: InputDecoration(
+                                              hintText: 'Cari perangkat...',
+                                              hintStyle: TextStyle(
+                                                  color: isDark
+                                                      ? Colors.white54
+                                                      : Colors.black45),
+                                              prefixIcon: Icon(Icons.search,
+                                                  color: isDark
+                                                      ? Colors.white70
+                                                      : Colors.black54),
+                                              suffixIcon: _searchController
+                                                      .text.isNotEmpty
+                                                  ? IconButton(
+                                                      icon: Icon(Icons.clear,
                                                           color: isDark
                                                               ? Colors.white70
-                                                              : Colors.black54,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                if (DeviceInfoExtractor.getTags(
-                                                        device)
-                                                    .isNotEmpty) ...[
-                                                  const SizedBox(height: 4),
-                                                  Wrap(
-                                                    spacing: 4,
-                                                    children:
-                                                        DeviceInfoExtractor
-                                                                .getTags(device)
-                                                            .take(3)
-                                                            .map(
-                                                                (tag) =>
-                                                                    Container(
-                                                                      padding:
-                                                                          const EdgeInsets
-                                                                              .symmetric(
-                                                                        horizontal:
-                                                                            6,
-                                                                        vertical:
-                                                                            2,
-                                                                      ),
-                                                                      decoration:
-                                                                          BoxDecoration(
-                                                                        color: Colors
-                                                                            .blue
-                                                                            .shade50,
-                                                                        borderRadius:
-                                                                            BorderRadius.circular(4),
-                                                                      ),
-                                                                      child:
-                                                                          Text(
-                                                                        tag,
-                                                                        style:
-                                                                            TextStyle(
-                                                                          fontSize:
-                                                                              10,
-                                                                          color: Colors
-                                                                              .blue
-                                                                              .shade700,
-                                                                        ),
-                                                                      ),
-                                                                    ))
-                                                            .toList(),
-                                                  ),
-                                                ],
-                                              ],
+                                                              : Colors.black54),
+                                                      onPressed: () {
+                                                        _searchController
+                                                            .clear();
+                                                        setState(() {});
+                                                      },
+                                                    )
+                                                  : null,
+                                              border: InputBorder.none,
+                                              isDense: true,
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 12),
                                             ),
+                                            style: TextStyle(
+                                                color: isDark
+                                                    ? Colors.white
+                                                    : Colors.black87),
                                           ),
                                         ),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.edit,
-                                            color: Colors.blue),
-                                        onPressed: () =>
-                                            _showChangePasswordDialog(device),
-                                        tooltip: 'Ganti Password',
-                                      ),
-                                    ],
+                                        Container(
+                                            height: 30,
+                                            width: 1,
+                                            color: isDark
+                                                ? Colors.grey.shade700
+                                                : Colors.grey.shade300),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.tune,
+                                            color: _statusFilter != 'Semua' ||
+                                                    _sortOption !=
+                                                        'Last Inform (Newest)' ||
+                                                    _rxFilter != 'Semua'
+                                                ? Colors.blue
+                                                : (isDark
+                                                    ? Colors.white70
+                                                    : Colors.black54),
+                                          ),
+                                          onPressed: _showFilterDialog,
+                                          tooltip: 'Filter',
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                );
-                              }),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
+                                  const SizedBox(height: 16),
+                                  // Devices List Header
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                        bottom: 12, left: 4),
+                                    child: Text(
+                                      'Daftar Perangkat (${filteredDevices.length})',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark
+                                            ? Colors.white54
+                                            : Colors.black54,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  // Devices List
+                                  if (_isLoading)
+                                    const Expanded(
+                                      child: Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    )
+                                  else if (filteredDevices.isEmpty)
+                                    Expanded(
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.search_off,
+                                                size: 80,
+                                                color: isDark
+                                                    ? Colors.white24
+                                                    : Colors.black26),
+                                            const SizedBox(height: 16),
+                                            Text(
+                                              'Tidak ada perangkat ditemukan',
+                                              style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isDark
+                                                      ? Colors.white70
+                                                      : Colors.black54),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Expanded(
+                                      child: ListView.builder(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 20),
+                                        physics: const BouncingScrollPhysics(),
+                                        itemCount: filteredDevices.length,
+                                        itemBuilder: (context, index) {
+                                          return _buildPremiumDeviceCard(
+                                              filteredDevices[index], isDark);
+                                        },
+                                      ),
+                                    ),
+                                ],
+                              ]))),
                   _buildFooter(),
                 ],
               ),
@@ -1513,52 +2257,107 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
   }
 
   Widget _buildFooter() {
-    if (_devices.isEmpty) return const SizedBox.shrink();
-
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
-    final filteredDevices = _getFilteredAndSortedDevices();
 
-    final filteredTotal = filteredDevices.length;
-    final totalDevices = _devices.length;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
+    if (_isLoading && _devices.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
-        border: Border(
-          top: BorderSide(
-            color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-            width: 1,
+        child: const Center(
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
+      );
+    }
+
+    if (_devices.isEmpty) return const SizedBox.shrink();
+
+    int activeCount = 0;
+    int offlineCount = 0;
+
+    for (var d in _devices) {
+      final status = DeviceInfoExtractor.getConnectionStatus(d).toLowerCase();
+      if (status == 'online' || status == 'idle') {
+        activeCount++;
+      } else {
+        offlineCount++;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+            offset: const Offset(0, -4),
+            blurRadius: 16,
+          ),
+        ],
       ),
-      child: Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.router,
-                color: isDark ? Colors.white70 : Colors.black54, size: 18),
-            const SizedBox(width: 6),
-            Text(
-              '$filteredTotal Total ACS Devices',
-              style: TextStyle(
-                color: isDark ? Colors.white70 : Colors.black54,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            if (filteredTotal != totalDevices) ...[
-              Text(
-                ' (of $totalDevices)',
-                style: TextStyle(
-                  color: isDark ? Colors.white54 : Colors.black38,
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
+      child: SafeArea(
+        top: false,
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isLoading) ...[
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+              ] else ...[
+                Icon(Icons.router,
+                    color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+                    size: 16),
+                const SizedBox(width: 8),
+              ],
+              RichText(
+                text: TextSpan(
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                  children: [
+                    TextSpan(
+                        text: '${_devices.length} ',
+                        style: TextStyle(
+                            color: isDark
+                                ? Colors.blue.shade300
+                                : Colors.blue.shade700,
+                            fontWeight: FontWeight.bold)),
+                    const TextSpan(text: 'Total   •   '),
+                    TextSpan(
+                        text: '$activeCount ',
+                        style: TextStyle(
+                            color: isDark
+                                ? Colors.green.shade400
+                                : Colors.green.shade600,
+                            fontWeight: FontWeight.bold)),
+                    const TextSpan(text: 'Online   •   '),
+                    TextSpan(
+                        text: '$offlineCount ',
+                        style: TextStyle(
+                            color: isDark
+                                ? Colors.red.shade400
+                                : Colors.red.shade600,
+                            fontWeight: FontWeight.bold)),
+                    const TextSpan(text: 'Offline'),
+                  ],
                 ),
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1576,5 +2375,271 @@ class _GenieACSScreenState extends State<GenieACSScreen> {
       default:
         return Colors.grey;
     }
+  }
+
+  Widget _buildPremiumDeviceCard(Map<String, dynamic> device, bool isDark) {
+    final statusColor = _getStatusColor(device);
+    final isSelected =
+        _selectedDeviceIds.contains(DeviceInfoExtractor.getDeviceId(device));
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onLongPress: () {
+            if (!_isSelectionMode) {
+              setState(() {
+                _isSelectionMode = true;
+                _selectedDeviceIds.add(DeviceInfoExtractor.getDeviceId(device));
+              });
+            }
+          },
+          onTap: () {
+            if (_isSelectionMode) {
+              setState(() {
+                final deviceId = DeviceInfoExtractor.getDeviceId(device);
+                if (_selectedDeviceIds.contains(deviceId)) {
+                  _selectedDeviceIds.remove(deviceId);
+                  if (_selectedDeviceIds.isEmpty) {
+                    _isSelectionMode = false;
+                  }
+                } else {
+                  _selectedDeviceIds.add(deviceId);
+                }
+              });
+            } else {
+              _showDeviceDetails(device);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_isSelectionMode)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Checkbox(
+                      value: isSelected,
+                      activeColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4)),
+                      onChanged: (bool? value) {
+                        setState(() {
+                          final deviceId =
+                              DeviceInfoExtractor.getDeviceId(device);
+                          if (value == true) {
+                            _selectedDeviceIds.add(deviceId);
+                          } else {
+                            _selectedDeviceIds.remove(deviceId);
+                            if (_selectedDeviceIds.isEmpty) {
+                              _isSelectionMode = false;
+                            }
+                          }
+                        });
+                      },
+                    ),
+                  ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: statusColor.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(Icons.router,
+                                color: statusColor, size: 24),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  DeviceInfoExtractor.getPPPoEUsername(device),
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color:
+                                        isDark ? Colors.white : Colors.black87,
+                                    letterSpacing: 0.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(Icons.cloud,
+                                        size: 14,
+                                        color: isDark
+                                            ? Colors.blue.shade300
+                                            : Colors.blue.shade700),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        DeviceInfoExtractor.getPPPoEIP(
+                                                    device) !=
+                                                '-'
+                                            ? DeviceInfoExtractor.getPPPoEIP(
+                                                device)
+                                            : DeviceInfoExtractor.getModel(
+                                                device),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: isDark
+                                              ? Colors.white70
+                                              : Colors.black54,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon:
+                                const Icon(Icons.password, color: Colors.blue),
+                            onPressed: () => _showChangePasswordDialog(device),
+                            tooltip: 'Ganti WiFi & Password',
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.blue.withOpacity(0.1),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.wifi_tethering,
+                                  size: 14,
+                                  color: isDark
+                                      ? Colors.orange.shade300
+                                      : Colors.orange.shade700,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'RX: ${DeviceInfoExtractor.getRXPower(device)} dBm',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark
+                                        ? Colors.orange.shade300
+                                        : Colors.orange.shade700,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.access_time,
+                                  size: 14,
+                                  color:
+                                      isDark ? Colors.white54 : Colors.black54,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  DeviceInfoExtractor.getLastInform(device)
+                                      .split(' ')
+                                      .take(2)
+                                      .join(' '),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black54,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (DeviceInfoExtractor.getTags(device).isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: DeviceInfoExtractor.getTags(device)
+                              .take(4)
+                              .map((tag) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                          color: Colors.blue.withOpacity(0.3)),
+                                    ),
+                                    child: Text(
+                                      tag,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark
+                                            ? Colors.blue.shade300
+                                            : Colors.blue.shade700,
+                                      ),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

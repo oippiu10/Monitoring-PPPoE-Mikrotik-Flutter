@@ -135,147 +135,238 @@ class _BillingScreenState extends State<BillingScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        Future<void> showAddPaymentDialog() async {
+        Future<void> showAddPaymentSheet() async {
           final formKey = GlobalKey<FormState>();
           final amountController = TextEditingController();
-          String selectedMethod = 'Cash';
-          DateTime paymentDate = DateTime.now();
           final noteController = TextEditingController();
+          final installmentAmountController = TextEditingController();
+          final installmentNoteController = TextEditingController();
+          String selectedMethod = 'cash';
+          DateTime paymentDate = DateTime.now();
           bool isSubmitting = false;
+          bool isInstallmentMode = false;
 
-          await showDialog(
+          // Cek apakah ada pembayaran di bulan yang sama sebelumnya
+          final currentMonth = _selectedMonth;
+          final payments = (user['payments'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+          final existingPayment = payments.firstWhere(
+            (p) {
+               final dt = DateTime.tryParse(p['payment_date']?.toString() ?? '');
+               return dt != null && dt.year == currentMonth.year && dt.month == currentMonth.month;
+            },
+            orElse: () => <String, dynamic>{},
+          );
+
+          final hasInstallment = existingPayment.isNotEmpty;
+          final prevAmount = double.tryParse(existingPayment['amount']?.toString() ?? '0') ?? 0.0;
+          final prevNote = existingPayment['note']?.toString() ?? '';
+
+          if (hasInstallment) {
+            amountController.text = currencyFormat.format(prevAmount);
+            noteController.text = prevNote;
+          } else {
+             // Coba ambil target tagihan jika tidak ada inputan
+             final harga = double.tryParse(user['harga']?.toString() ?? '0') ?? 0.0;
+             if (harga > 0) {
+                 amountController.text = currencyFormat.format(harga);
+             }
+          }
+
+          await showModalBottomSheet(
             context: context,
-            barrierDismissible: false,
-            builder: (dialogContext) {
+            isScrollControlled: true,
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            builder: (sheetContext) {
               return StatefulBuilder(
-                builder: (context, setDialogState) {
-                  return AlertDialog(
-                    backgroundColor:
-                        isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                    title: Text('Tambah Pembayaran',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : Colors.black87,
-                        )),
-                    content: Form(
-                      key: formKey,
-                      child: SingleChildScrollView(
+                builder: (context, setSheetState) {
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom,
+                      left: 24,
+                      right: 24,
+                      top: 16,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Form(
+                        key: formKey,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            TextFormField(
-                              controller: amountController,
+                            Center(
+                              child: Container(
+                                width: 40,
+                                height: 4,
+                                margin: const EdgeInsets.only(bottom: 24),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.grey.shade700 : Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                            Text(
+                              hasInstallment ? 'Edit Pembayaran / Angsuran' : 'Tambah Pembayaran',
                               style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                                 color: isDark ? Colors.white : Colors.black87,
                               ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [CurrencyInputFormatter()],
-                              decoration: InputDecoration(
-                                labelText: 'Nominal (Rp)',
-                                labelStyle: TextStyle(
-                                  color:
-                                      isDark ? Colors.white70 : Colors.black54,
-                                ),
-                                prefixText: 'Rp ',
-                                prefixStyle: TextStyle(
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                                border: OutlineInputBorder(
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              user['username'] ?? '-',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            
+                            if (hasInstallment) ...[
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.grey.shade700
-                                        : Colors.grey.shade300,
-                                  ),
                                 ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.grey.shade700
-                                        : Colors.grey.shade300,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.blue.shade300
-                                        : Colors.blue,
-                                  ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () => setSheetState(() => isInstallmentMode = false),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: !isInstallmentMode ? (isDark ? Colors.grey.shade700 : Colors.white) : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(8),
+                                            boxShadow: !isInstallmentMode ? [
+                                              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+                                            ] : [],
+                                          ),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            'Koreksi Total',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              color: !isInstallmentMode ? (isDark ? Colors.white : Colors.black87) : Colors.grey,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () => setSheetState(() => isInstallmentMode = true),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: isInstallmentMode ? (isDark ? Colors.grey.shade700 : Colors.white) : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(8),
+                                            boxShadow: isInstallmentMode ? [
+                                              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+                                            ] : [],
+                                          ),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            'Tambah Angsuran',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              color: isInstallmentMode ? (isDark ? Colors.white : Colors.black87) : Colors.grey,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Nominal wajib diisi'
-                                  : null,
-                            ),
+                              const SizedBox(height: 20),
+                            ],
+
+                            if (isInstallmentMode && hasInstallment) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: isDark ? Colors.blue.shade800 : Colors.blue.shade200),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Terbayar Sebelumnya:', style: TextStyle(fontSize: 12, color: isDark ? Colors.blue.shade200 : Colors.blue.shade800)),
+                                    Text('Rp ${currencyFormat.format(prevAmount)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700)),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: installmentAmountController,
+                                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [CurrencyInputFormatter()],
+                                decoration: InputDecoration(
+                                  labelText: 'Nominal Tambahan (Rp)',
+                                  labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                                  prefixText: 'Rp ',
+                                  prefixStyle: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.blue.shade300 : Colors.blue)),
+                                ),
+                                validator: (v) => v == null || v.isEmpty ? 'Nominal tambahan wajib diisi' : null,
+                              ),
+                            ] else ...[
+                              TextFormField(
+                                controller: amountController,
+                                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [CurrencyInputFormatter()],
+                                decoration: InputDecoration(
+                                  labelText: 'Nominal Total (Rp)',
+                                  labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                                  prefixText: 'Rp ',
+                                  prefixStyle: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.blue.shade300 : Colors.blue)),
+                                ),
+                                validator: (v) => v == null || v.isEmpty ? 'Nominal wajib diisi' : null,
+                              ),
+                            ],
+
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
-                              dropdownColor: isDark
-                                  ? const Color(0xFF2D2D2D)
-                                  : Colors.white,
+                              dropdownColor: isDark ? const Color(0xFF2D2D2D) : Colors.white,
                               value: selectedMethod,
-                              items: [
-                                DropdownMenuItem(
-                                    value: 'Cash',
-                                    child: Text(
-                                      'Cash',
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                    )),
-                                DropdownMenuItem(
-                                    value: 'Transfer',
-                                    child: Text(
-                                      'Transfer',
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                    )),
+                              items: const [
+                                DropdownMenuItem(value: 'cash', child: Text('Cash (Tunai)')),
+                                DropdownMenuItem(value: 'transfer', child: Text('Transfer Bank')),
+                                DropdownMenuItem(value: 'qris', child: Text('QRIS')),
+                                DropdownMenuItem(value: 'e-wallet', child: Text('E-Wallet')),
+                                DropdownMenuItem(value: 'titipan', child: Text('Titipan / Deposit')),
                               ],
                               onChanged: (v) {
-                                setDialogState(() {
+                                setSheetState(() {
                                   selectedMethod = v!;
                                 });
                               },
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
                               decoration: InputDecoration(
-                                labelText: 'Metode',
-                                labelStyle: TextStyle(
-                                  color:
-                                      isDark ? Colors.white70 : Colors.black54,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.grey.shade700
-                                        : Colors.grey.shade300,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.grey.shade700
-                                        : Colors.grey.shade300,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.blue.shade300
-                                        : Colors.blue,
-                                  ),
-                                ),
+                                labelText: 'Metode Pembayaran',
+                                labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
+                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.blue.shade300 : Colors.blue)),
                               ),
                             ),
+
                             const SizedBox(height: 16),
                             InkWell(
                               onTap: () async {
@@ -283,259 +374,195 @@ class _BillingScreenState extends State<BillingScreen> {
                                   context: context,
                                   initialDate: paymentDate,
                                   firstDate: DateTime(2020),
-                                  lastDate: DateTime.now()
-                                      .add(const Duration(days: 365)),
+                                  lastDate: DateTime.now().add(const Duration(days: 365)),
                                 );
                                 if (picked != null) {
-                                  setDialogState(() {
+                                  setSheetState(() {
                                     paymentDate = picked;
                                   });
                                 }
                               },
                               child: InputDecorator(
                                 decoration: InputDecoration(
-                                  labelText: 'Tanggal Pembayaran',
-                                  labelStyle: TextStyle(
-                                    color: isDark
-                                        ? Colors.white70
-                                        : Colors.black54,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(
-                                      color: isDark
-                                          ? Colors.grey.shade700
-                                          : Colors.grey.shade300,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(
-                                      color: isDark
-                                          ? Colors.grey.shade700
-                                          : Colors.grey.shade300,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(
-                                      color: isDark
-                                          ? Colors.blue.shade300
-                                          : Colors.blue,
-                                    ),
-                                  ),
+                                  labelText: isInstallmentMode ? 'Tanggal Setor Tambahan' : 'Tanggal Pembayaran',
+                                  labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.blue.shade300 : Colors.blue)),
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(Icons.calendar_today,
-                                        size: 18,
-                                        color: isDark
-                                            ? Colors.grey.shade400
-                                            : Colors.blueGrey),
+                                    Icon(Icons.calendar_today, size: 18, color: isDark ? Colors.grey.shade400 : Colors.blueGrey),
                                     const SizedBox(width: 8),
                                     Text(
-                                      DateFormat('EEEE, dd MMMM yyyy', 'id_ID')
-                                          .format(paymentDate),
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          color: isDark
-                                              ? Colors.white70
-                                              : Colors.black54),
+                                      DateFormat('EEEE, dd MMMM yyyy', 'id_ID').format(paymentDate),
+                                      style: TextStyle(fontSize: 14, color: isDark ? Colors.white : Colors.black87),
                                     ),
                                   ],
                                 ),
                               ),
                             ),
+                            
                             const SizedBox(height: 16),
                             TextFormField(
-                              controller: noteController,
-                              style: TextStyle(
-                                color: isDark ? Colors.white : Colors.black87,
-                              ),
+                              controller: isInstallmentMode ? installmentNoteController : noteController,
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                               decoration: InputDecoration(
-                                labelText: 'Catatan (opsional)',
-                                labelStyle: TextStyle(
-                                  color:
-                                      isDark ? Colors.white70 : Colors.black54,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.grey.shade700
-                                        : Colors.grey.shade300,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.grey.shade700
-                                        : Colors.grey.shade300,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(
-                                    color: isDark
-                                        ? Colors.blue.shade300
-                                        : Colors.blue,
-                                  ),
-                                ),
+                                labelText: isInstallmentMode ? 'Catatan Setoran (opsional)' : 'Catatan (opsional)',
+                                labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
+                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.blue.shade300 : Colors.blue)),
                               ),
                               minLines: 1,
                               maxLines: 3,
                             ),
+                            
+                            const SizedBox(height: 24),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextButton(
+                                    onPressed: () => Navigator.of(sheetContext).pop(),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    child: Text(
+                                      'BATAL',
+                                      style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  flex: 2,
+                                  child: ElevatedButton(
+                                    onPressed: isSubmitting ? null : () async {
+                                      if (!formKey.currentState!.validate()) return;
+                                      
+                                      setSheetState(() {
+                                        isSubmitting = true;
+                                      });
+
+                                      try {
+                                        final userId = user['id']?.toString();
+                                        if (userId == null) throw Exception('User ID tidak ditemukan');
+
+                                        final routerId = Provider.of<RouterSessionProvider>(context, listen: false).routerId;
+                                        if (routerId == null || routerId.isEmpty) throw Exception('Router belum login.');
+
+                                        double finalAmount = 0.0;
+                                        String finalNote = '';
+
+                                        if (isInstallmentMode && hasInstallment) {
+                                          final instAmtRaw = installmentAmountController.text.replaceAll('.', '').replaceAll(',', '');
+                                          final instAmt = double.tryParse(instAmtRaw) ?? 0;
+                                          finalAmount = prevAmount + instAmt;
+
+                                          final dateStr = DateFormat('yyyy-MM-dd').format(paymentDate);
+                                          final instDesc = '[Angsuran: +Rp${currencyFormat.format(instAmt)} tgl $dateStr (${selectedMethod.toUpperCase()})${installmentNoteController.text.isNotEmpty ? ' - ' + installmentNoteController.text : ''}]';
+                                          
+                                          if (prevNote.contains('[Angsuran:')) {
+                                            finalNote = '$prevNote\n$instDesc';
+                                          } else {
+                                            final prevDateStr = existingPayment['payment_date'] ?? dateStr;
+                                            final prevMethod = (existingPayment['method'] ?? 'CASH').toString().toUpperCase();
+                                            final firstDesc = '[Awal: Rp${currencyFormat.format(prevAmount)} tgl $prevDateStr ($prevMethod)${prevNote.isNotEmpty ? ' - ' + prevNote : ''}]';
+                                            finalNote = '$firstDesc\n$instDesc';
+                                          }
+                                        } else {
+                                          final amtRaw = amountController.text.replaceAll('.', '').replaceAll(',', '');
+                                          finalAmount = double.tryParse(amtRaw) ?? 0;
+                                          finalNote = noteController.text;
+                                          
+                                          // Reset note behavior if total matched initial
+                                          if (prevNote.contains('[Angsuran:')) {
+                                             final match = RegExp(r'\[Awal:\s*Rp\s*([\d.]+)', caseSensitive: false).firstMatch(prevNote);
+                                             if (match != null) {
+                                                final awalAmt = double.tryParse(match.group(1)!.replaceAll('.', '')) ?? 0;
+                                                if (finalAmount == awalAmt) {
+                                                   final lines = prevNote.split('\n');
+                                                   final awalLine = lines.where((l) => l.startsWith('[Awal:')).firstOrNull;
+                                                   if (awalLine != null) finalNote = awalLine;
+                                                }
+                                             }
+                                          }
+                                        }
+
+                                        // Ambil username sebelum proses async dimulai untuk mencegah error context
+                                        final adminUsername = Provider.of<RouterSessionProvider>(context, listen: false).username;
+
+                                        final respData = await ApiService.addPayment(
+                                          routerId: routerId,
+                                          userId: userId,
+                                          amount: finalAmount,
+                                          paymentDate: DateFormat('yyyy-MM-dd').format(paymentDate),
+                                          method: selectedMethod,
+                                          note: finalNote,
+                                          adminUsername: adminUsername,
+                                          customerName: user['username'],
+                                        );
+
+                                        if (respData['success'] == true) {
+                                          Navigator.of(sheetContext).pop();
+                                          if (context.mounted) {
+                                            // Send Notification
+                                            try {
+                                              final notifBody = "Nama : ${user['username']}\n"
+                                                  "Nominal : Rp ${currencyFormat.format(finalAmount)}\n"
+                                                  "Metode : $selectedMethod\n"
+                                                  "Tanggal : ${DateFormat('dd MMM yyyy').format(paymentDate)}\n"
+                                                  "Catatan : $finalNote\n"
+                                                  "Oleh : $adminUsername";
+                                              
+                                              await LogSyncService(this.context).testNotification(
+                                                title: "Pembayaran Berhasil",
+                                                body: notifBody,
+                                              );
+                                            } catch (e) {
+                                              debugPrint("Error notif: $e");
+                                            }
+
+                                            await showSuccessDialog(this.context, 'Pembayaran berhasil ditambahkan!');
+                                            if (mounted) {
+                                              // Tutup Billing Detail Sheet utama agar user kembali ke list yang ter-refresh
+                                              Navigator.of(this.context).pop();
+                                              _loadUsers();
+                                            }
+                                          }
+                                        } else {
+                                          throw Exception(respData['error'] ?? 'Unknown error');
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          CustomSnackbar.show(context: context, message: 'Gagal', additionalInfo: e.toString(), isSuccess: false);
+                                        }
+                                      } finally {
+                                        if (sheetContext.mounted) {
+                                          setSheetState(() => isSubmitting = false);
+                                        }
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green.shade600,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 0,
+                                    ),
+                                    child: isSubmitting 
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Text('SIMPAN PEMBAYARAN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
                           ],
                         ),
                       ),
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                        },
-                        child: Text(
-                          'BATAL',
-                          style: TextStyle(
-                            color: isDark ? Colors.blue.shade300 : Colors.blue,
-                          ),
-                        ),
-                      ),
-                      ElevatedButton(
-                        onPressed: isSubmitting
-                            ? null
-                            : () async {
-                                if (!formKey.currentState!.validate()) return;
-
-                                setDialogState(() {
-                                  isSubmitting = true;
-                                });
-
-                                try {
-                                  // Safe access to prevent null pointer exceptions
-                                  final userId = user['id']?.toString();
-                                  if (userId == null) {
-                                    throw Exception('User ID tidak ditemukan');
-                                  }
-
-                                  // Get router_id from RouterSessionProvider
-                                  final routerId =
-                                      Provider.of<RouterSessionProvider>(
-                                              context,
-                                              listen: false)
-                                          .routerId;
-                                  if (routerId == null || routerId.isEmpty) {
-                                    throw Exception(
-                                        'Router belum login. Silakan login dulu.');
-                                  }
-
-                                  final amountRaw = amountController.text
-                                      .replaceAll('.', '')
-                                      .replaceAll(',', '');
-                                  final amount =
-                                      double.tryParse(amountRaw) ?? 0;
-                                  // Use ApiService to add payment
-                                  final respData = await ApiService.addPayment(
-                                    routerId: routerId,
-                                    userId: userId,
-                                    amount: amount,
-                                    paymentDate: DateFormat('yyyy-MM-dd')
-                                        .format(paymentDate),
-                                    method: selectedMethod,
-                                    note: noteController.text,
-                                    adminUsername:
-                                        Provider.of<RouterSessionProvider>(
-                                                context,
-                                                listen: false)
-                                            .username,
-                                    customerName: user['username'],
-                                  );
-                                  if (respData['success'] == true) {
-                                    Navigator.of(dialogContext).pop();
-                                    if (context.mounted) {
-                                      // Trigger Notification
-                                      try {
-                                        final amountFixed = amount
-                                            .toStringAsFixed(0)
-                                            .replaceAllMapped(
-                                                RegExp(
-                                                    r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-                                                (Match m) => '${m[1]}.');
-                                        final dateStr =
-                                            DateFormat('dd MMM yyyy')
-                                                .format(paymentDate);
-                                        final adminUser =
-                                            Provider.of<RouterSessionProvider>(
-                                                    context,
-                                                    listen: false)
-                                                .username;
-
-                                        final notifBody =
-                                            "Nama : ${user['username']}\n"
-                                            "Nominal : Rp. $amountFixed\n"
-                                            "Metode : $selectedMethod\n"
-                                            "Tanggal : $dateStr\n"
-                                            "Catatan : ${noteController.text}\n"
-                                            "Oleh : $adminUser";
-
-                                        await LogSyncService(context)
-                                            .testNotification(
-                                          title: "Pembayaran Berhasil",
-                                          body: notifBody,
-                                        );
-                                      } catch (e) {
-                                        debugPrint(
-                                            "Error showing notification: $e");
-                                      }
-
-                                      await showSuccessDialog(context,
-                                          'Pembayaran berhasil ditambahkan!');
-                                      if (mounted) {
-                                        // Refresh data setelah berhasil menambah pembayaran
-                                        _loadUsers();
-                                      }
-                                    }
-                                  } else {
-                                    Navigator.of(dialogContext).pop();
-                                    if (context.mounted) {
-                                      CustomSnackbar.show(
-                                        context: context,
-                                        message: 'Gagal menambahkan pembayaran',
-                                        additionalInfo: respData['error'] ??
-                                            'Unknown error',
-                                        isSuccess: false,
-                                      );
-                                    }
-                                  }
-                                } catch (e) {
-                                  Navigator.of(dialogContext).pop();
-                                  if (context.mounted) {
-                                    CustomSnackbar.show(
-                                      context: context,
-                                      message: 'Error',
-                                      additionalInfo: e.toString(),
-                                      isSuccess: false,
-                                    );
-                                  }
-                                } finally {
-                                  // Ensure the loading state is reset even if an error occurs
-                                  if (dialogContext.mounted) {
-                                    setDialogState(() {
-                                      isSubmitting = false;
-                                    });
-                                  }
-                                }
-                              },
-                        child: isSubmitting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('SIMPAN'),
-                      ),
-                    ],
                   );
                 },
               );
@@ -688,7 +715,7 @@ class _BillingScreenState extends State<BillingScreen> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Rp ${currencyFormat.format(_filteredPayments(user).fold<double>(0, (sum, p) => sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0)))}',
+                                    'Rp ${currencyFormat.format(_filteredPayments(user).where((p) => p['method']?.toString().toLowerCase() != 'titipan').fold<double>(0, (sum, p) => sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0)))}',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: isDark
@@ -967,7 +994,7 @@ class _BillingScreenState extends State<BillingScreen> {
                                                   child: ElevatedButton.icon(
                                                     onPressed: () =>
                                                         _showEditPaymentDialog(
-                                                            p, user),
+                                                            p, user, onSuccess: () => Navigator.of(context).pop()),
                                                     icon: Icon(
                                                       Icons.edit,
                                                       size: 18,
@@ -1020,7 +1047,7 @@ class _BillingScreenState extends State<BillingScreen> {
                                                   child: ElevatedButton.icon(
                                                     onPressed: () =>
                                                         _confirmDeletePayment(
-                                                            p, user),
+                                                            p, user, onSuccess: () => Navigator.of(context).pop()),
                                                     icon: Icon(
                                                       Icons.delete,
                                                       size: 18,
@@ -1082,7 +1109,7 @@ class _BillingScreenState extends State<BillingScreen> {
                       child: SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: showAddPaymentDialog,
+                          onPressed: showAddPaymentSheet,
                           icon:
                               const Icon(Icons.add_circle, color: Colors.white),
                           label: const Text('Tambah Pembayaran',
@@ -1895,6 +1922,38 @@ Terimakasih''';
                                 ],
                               ),
                             ),
+                            PopupMenuItem<String>(
+                              value: 'statusTitipan',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.inventory_2_outlined,
+                                      size: 20,
+                                      color: _sortOption == 'statusTitipan'
+                                          ? (isDark
+                                              ? Colors.blue.shade300
+                                              : Colors.blue)
+                                          : (isDark
+                                              ? Colors.white70
+                                              : Colors.black54)),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Titipan',
+                                    style: TextStyle(
+                                      color: _sortOption == 'statusTitipan'
+                                          ? (isDark
+                                              ? Colors.blue.shade300
+                                              : Colors.blue)
+                                          : (isDark
+                                              ? Colors.white
+                                              : Colors.black87),
+                                      fontWeight: _sortOption == 'statusTitipan'
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -2131,16 +2190,55 @@ Terimakasih''';
                       Expanded(
                         child: RefreshIndicator(
                           onRefresh: () async => _loadUsers(),
-                          child: ListView.separated(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 8),
-                            itemCount: users.length,
+                          child: users.isEmpty
+                              ? ListView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  children: [
+                                    SizedBox(
+                                      height: MediaQuery.of(context).size.height * 0.5,
+                                      child: const Center(
+                                        child: Text('Tidak ada data tagihan ditemukan',
+                                            style: TextStyle(color: Colors.grey, fontSize: 16)),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : ListView.separated(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 8),
+                                  itemCount: users.length,
                             separatorBuilder: (context, index) =>
                                 const SizedBox(height: 12),
                             itemBuilder: (context, i) {
                               final user = users[i];
-                              // Status lunas/Belum harus sesuai bulan yang dipilih
-                              // (_showAllPayments hanya mempengaruhi popup, bukan status card)
+                              final payStatus = _getUserPaymentStatusForSelectedMonth(user);
+                              
+                              Color statusColor;
+                              Color statusBgColor;
+                              Color statusIconColor;
+                              IconData statusIcon;
+                              String statusText;
+
+                              if (payStatus == 'lunas') {
+                                statusColor = isDark ? Colors.green.shade700 : Colors.green;
+                                statusBgColor = isDark ? Colors.green.shade900 : Colors.green.shade50;
+                                statusIconColor = isDark ? Colors.green.shade300 : Colors.green;
+                                statusIcon = Icons.check;
+                                statusText = 'Lunas';
+                              } else if (payStatus == 'titipan') {
+                                statusColor = isDark ? Colors.orange.shade700 : Colors.orange;
+                                statusBgColor = isDark ? Colors.orange.shade900 : Colors.orange.shade50;
+                                statusIconColor = isDark ? Colors.orange.shade300 : Colors.orange;
+                                statusIcon = Icons.inventory_2;
+                                statusText = 'Titipan';
+                              } else {
+                                statusColor = isDark ? Colors.red.shade700 : Colors.red;
+                                statusBgColor = isDark ? Colors.red.shade900 : Colors.red.shade50;
+                                statusIconColor = isDark ? Colors.red.shade300 : Colors.red;
+                                statusIcon = Icons.close;
+                                statusText = 'Belum';
+                              }
 
                               return GestureDetector(
                                 onTap: () => _showBillingDetailSheet(user),
@@ -2150,14 +2248,7 @@ Terimakasih''';
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                     side: BorderSide(
-                                        color:
-                                            _hasUserPaidForSelectedMonth(user)
-                                                ? (isDark
-                                                    ? Colors.green.shade700
-                                                    : Colors.green.shade100)
-                                                : (isDark
-                                                    ? Colors.red.shade700
-                                                    : Colors.red.shade100),
+                                        color: statusColor.withOpacity(0.5),
                                         width: 1.2),
                                   ),
                                   color: isDark
@@ -2170,25 +2261,9 @@ Terimakasih''';
                                       children: [
                                         CircleAvatar(
                                           radius: 22,
-                                          backgroundColor:
-                                              _hasUserPaidForSelectedMonth(user)
-                                                  ? (isDark
-                                                      ? Colors.green.shade900
-                                                      : Colors.green.shade50)
-                                                  : (isDark
-                                                      ? Colors.red.shade900
-                                                      : Colors.red.shade50),
+                                          backgroundColor: statusBgColor,
                                           child: Icon(Icons.payments,
-                                              color:
-                                                  _hasUserPaidForSelectedMonth(
-                                                          user)
-                                                      ? (isDark
-                                                          ? Colors
-                                                              .green.shade300
-                                                          : Colors.green)
-                                                      : (isDark
-                                                          ? Colors.red.shade300
-                                                          : Colors.red),
+                                              color: statusIconColor,
                                               size: 26),
                                         ),
                                         const SizedBox(width: 14),
@@ -2287,21 +2362,9 @@ Terimakasih''';
                                           children: [
                                             CircleAvatar(
                                               radius: 16,
-                                              backgroundColor:
-                                                  _hasUserPaidForSelectedMonth(
-                                                          user)
-                                                      ? (isDark
-                                                          ? Colors
-                                                              .green.shade700
-                                                          : Colors.green)
-                                                      : (isDark
-                                                          ? Colors.red.shade700
-                                                          : Colors.red),
+                                              backgroundColor: statusColor,
                                               child: Icon(
-                                                _hasUserPaidForSelectedMonth(
-                                                        user)
-                                                    ? Icons.check
-                                                    : Icons.close,
+                                                statusIcon,
                                                 color: Colors.white,
                                                 size: 20,
                                               ),
@@ -2313,39 +2376,14 @@ Terimakasih''';
                                                       horizontal: 8,
                                                       vertical: 2),
                                               decoration: BoxDecoration(
-                                                color:
-                                                    _hasUserPaidForSelectedMonth(
-                                                            user)
-                                                        ? (isDark
-                                                            ? Colors
-                                                                .green.shade900
-                                                            : Colors
-                                                                .green.shade50)
-                                                        : (isDark
-                                                            ? Colors
-                                                                .red.shade900
-                                                            : Colors
-                                                                .red.shade50),
+                                                color: statusBgColor,
                                                 borderRadius:
                                                     BorderRadius.circular(8),
                                               ),
                                               child: Text(
-                                                _hasUserPaidForSelectedMonth(
-                                                        user)
-                                                    ? 'Lunas'
-                                                    : 'Belum',
+                                                statusText,
                                                 style: TextStyle(
-                                                  color:
-                                                      _hasUserPaidForSelectedMonth(
-                                                              user)
-                                                          ? (isDark
-                                                              ? Colors.green
-                                                                  .shade300
-                                                              : Colors.green)
-                                                          : (isDark
-                                                              ? Colors
-                                                                  .red.shade300
-                                                              : Colors.red),
+                                                  color: statusIconColor,
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 12,
                                                 ),
@@ -2535,12 +2573,15 @@ Terimakasih''';
   }
 
   void _showEditPaymentDialog(
-      Map<String, dynamic> payment, Map<String, dynamic> user) {
+      Map<String, dynamic> payment, Map<String, dynamic> user, {VoidCallback? onSuccess}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final formKey = GlobalKey<FormState>();
     final amountController =
         TextEditingController(text: payment['amount']?.toString() ?? '');
-    String selectedMethod = payment['method']?.toString() ?? 'Cash';
+    String dbMethod = payment['method']?.toString().toLowerCase() ?? 'cash';
+    List<String> allowedMethods = ['cash', 'transfer', 'qris', 'e-wallet', 'titipan'];
+    if (!allowedMethods.contains(dbMethod)) dbMethod = 'cash';
+    String selectedMethod = dbMethod;
     DateTime paymentDate =
         DateTime.tryParse(payment['payment_date']?.toString() ?? '') ??
             DateTime.now();
@@ -2618,23 +2659,12 @@ Terimakasih''';
                         dropdownColor:
                             isDark ? const Color(0xFF2D2D2D) : Colors.white,
                         value: selectedMethod,
-                        items: [
-                          DropdownMenuItem(
-                              value: 'Cash',
-                              child: Text(
-                                'Cash',
-                                style: TextStyle(
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              )),
-                          DropdownMenuItem(
-                              value: 'Transfer',
-                              child: Text(
-                                'Transfer',
-                                style: TextStyle(
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              )),
+                        items: const [
+                          DropdownMenuItem(value: 'cash', child: Text('Cash (Tunai)')),
+                          DropdownMenuItem(value: 'transfer', child: Text('Transfer Bank')),
+                          DropdownMenuItem(value: 'qris', child: Text('QRIS')),
+                          DropdownMenuItem(value: 'e-wallet', child: Text('E-Wallet')),
+                          DropdownMenuItem(value: 'titipan', child: Text('Titipan / Deposit')),
                         ],
                         onChanged: (v) {
                           setDialogState(() {
@@ -2871,6 +2901,13 @@ Terimakasih''';
                                 await showSuccessDialog(this.context,
                                     'Pembayaran berhasil diupdate!');
                                 if (mounted) {
+                                  // Update local object
+                                  payment['amount'] = amount;
+                                  payment['method'] = selectedMethod;
+                                  payment['payment_date'] = DateFormat('yyyy-MM-dd').format(paymentDate);
+                                  payment['note'] = noteController.text;
+                                  if (onSuccess != null) onSuccess();
+                                  
                                   // Refresh data setelah berhasil mengupdate pembayaran
                                   _loadUsers();
                                 }
@@ -2922,7 +2959,7 @@ Terimakasih''';
   }
 
   void _confirmDeletePayment(
-      Map<String, dynamic> payment, Map<String, dynamic> user) {
+      Map<String, dynamic> payment, Map<String, dynamic> user, {VoidCallback? onSuccess}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
@@ -2960,7 +2997,9 @@ Terimakasih''';
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                  backgroundColor: isDark ? Colors.red.shade700 : Colors.red),
+                  backgroundColor: isDark ? Colors.red.shade700 : Colors.red,
+                  foregroundColor: Colors.white,
+              ),
               onPressed: () async {
                 try {
                   // Get router_id from RouterSessionProvider
@@ -3024,6 +3063,12 @@ Terimakasih''';
                       await showSuccessDialog(
                           context, 'Pembayaran berhasil dihapus!');
                       if (mounted) {
+                        // Remove from local list
+                        if (user['payments'] is List) {
+                          (user['payments'] as List).removeWhere((item) => item['id'] == payment['id']);
+                        }
+                        if (onSuccess != null) onSuccess();
+                        
                         // Refresh data setelah berhasil menghapus pembayaran
                         _loadUsers();
                       }
@@ -3143,6 +3188,22 @@ Terimakasih''';
           return paidA ? 1 : -1; // Unpaid first
         });
         break;
+      case 'statusTitipan':
+        filtered.sort((a, b) {
+          bool isTitipanA = (a['payments'] as List).any((p) {
+             final dt = DateTime.tryParse(p['payment_date'] ?? '');
+             return dt != null && dt.year == _selectedMonth.year && dt.month == _selectedMonth.month && (p['method']?.toString().toLowerCase() == 'titipan');
+          });
+          bool isTitipanB = (b['payments'] as List).any((p) {
+             final dt = DateTime.tryParse(p['payment_date'] ?? '');
+             return dt != null && dt.year == _selectedMonth.year && dt.month == _selectedMonth.month && (p['method']?.toString().toLowerCase() == 'titipan');
+          });
+          if (isTitipanA == isTitipanB) {
+            return (a['username'] ?? '').compareTo(b['username'] ?? '');
+          }
+          return isTitipanA ? -1 : 1; // Titipan first
+        });
+        break;
       case 'nameAsc':
       default:
         filtered.sort(
@@ -3153,16 +3214,24 @@ Terimakasih''';
     return filtered;
   }
 
+  String _getUserPaymentStatusForSelectedMonth(Map<String, dynamic> user) {
+    for (var p in (user['payments'] as List)) {
+      final paymentDate = DateTime.tryParse(p['payment_date'] ?? '');
+      if (paymentDate != null &&
+          paymentDate.year == _selectedMonth.year &&
+          paymentDate.month == _selectedMonth.month) {
+        if (p['method']?.toString().toLowerCase() == 'titipan') {
+          return 'titipan';
+        }
+        return 'lunas';
+      }
+    }
+    return 'belum';
+  }
+
   // Method to check if user has paid for the selected month
   bool _hasUserPaidForSelectedMonth(Map<String, dynamic> user) {
-    // Always check based on the selected month, regardless of _showAllPayments
-    // (_showAllPayments only affects what's shown in the popup, not the status card)
-    return (user['payments'] as List).any((p) {
-      final paymentDate = DateTime.tryParse(p['payment_date'] ?? '');
-      return paymentDate != null &&
-          paymentDate.year == _selectedMonth.year &&
-          paymentDate.month == _selectedMonth.month;
-    });
+    return _getUserPaymentStatusForSelectedMonth(user) != 'belum';
   }
 
   String formatLastLogout(String? lastLogout) {

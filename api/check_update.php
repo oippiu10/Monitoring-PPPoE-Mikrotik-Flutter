@@ -35,6 +35,57 @@ const APK_SIZE_BYTES = 0; // Will be calculated if APK exists
 // Optional: Add release notes
 const RELEASE_NOTES = [
     [
+        'version' => '1.0.13+15',
+        'build' => 15,
+        'date' => '2026-06-25',
+        'notes' => [
+            '🛡️ Arsitektur Keamanan Baru (Dual Server):',
+            '- Implementasi Lisensi Failover (Utama: Marzuq, Backup: CMM)',
+            '- Aplikasi akan otomatis beralih ke server cadangan jika server utama sedang sibuk atau mati'
+        ]
+    ],
+    [
+        'version' => '1.0.12+14',
+        'build' => 14,
+        'date' => '2026-06-25',
+        'notes' => [
+            '📸 Fitur Baru: Upload Struk Pengeluaran',
+            '- Dukungan lampiran bukti pembayaran/struk via Kamera & Galeri',
+            '- Sinkronisasi gambar otomatis ke server cloud (VPS)',
+            '- Pratinjau struk (Zoomable) di halaman detail pengeluaran',
+            '- Perbaikan performa dan UI Image Picker yang lebih modern'
+        ]
+    ],
+    [
+        'version' => '1.0.11+12',
+        'build' => 12,
+        'date' => '2026-04-10',
+        'notes' => [
+            '🛡️ Sistem Keamanan & Lisensi Lanjutan:',
+            '- Implementasi Force Update Panel (Keamanan Wajib Update)',
+            '- Pemisahan panel update antara menu Settings dengan Layar Utama',
+            '- Integrasi peluncur Whatsapp khusus kontak Admin Mikrotik Monitor',
+            '- Perbaikan desain Alert Kotak Dialog dengan struktur anti-overflow'
+        ]
+    ],
+    [
+        'version' => '1.0.10+11',
+        'build' => 11,
+        'date' => '2026-04-08',
+        'notes' => [
+            '💎 Premium UI & Modern Dashboard:',
+            '- Desain baru berbasis Glassmorphism & HSL Color Palette',
+            '- Sidebar modern dengan floating effect',
+            '- Kartu statistik dengan gradien dinamis',
+            '🛡️ Keamanan & Lisensi Tingkat Tinggi:',
+            '- Implementasi SHA256 Hardware-Binding (Router ID + Secret Key)',
+            '- Anatomi kode 21 karakter (MKM-MMHYY-XXXXX-XXXXX) untuk transparansi',
+            '- Fitur License Inspector (Reverse Lookup) bagi administrator',
+            '- Perbaikan bug klik (z-index) pada popup panel',
+            '- Sinkronisasi kunci rahasia otomatis dengan server'
+        ]
+    ],
+    [
         'version' => '1.0.9+10',
         'build' => 10,
         'date' => '2026-02-08',
@@ -165,55 +216,91 @@ $clientBuild = intval($_GET['current_build'] ?? $_POST['current_build'] ?? 0);
 /**
  * Calculate actual APK size if file exists
  */
-function getApkSize($url) {
+function getApkSize($url)
+{
     $size = APK_SIZE_BYTES;
-    
+
     // Try to get file size from server
     if (filter_var($url, FILTER_VALIDATE_URL)) {
         // Parse URL to local path if same domain
         $parsedUrl = parse_url($url);
         $path = $_SERVER['DOCUMENT_ROOT'] . $parsedUrl['path'];
-        
+
         if (file_exists($path)) {
             $size = filesize($path);
         }
     }
-    
+
     return $size;
 }
 
 /**
  * Check if update is required
  */
-function isUpdateRequired($clientVersion, $clientBuild) {
-    if ($clientVersion === null) {
+function isUpdateRequired($clientVersion, $clientBuild)
+{
+    if ($clientVersion === null || trim($clientVersion) === '') {
         return false;
     }
-    
-    // Compare versions (simple string comparison for now)
-    // You can use version_compare() for more complex logic
-    if (version_compare($clientVersion, MINIMUM_REQUIRED_VERSION, '<')) {
+
+    // Normalize version string to prevent '1.0' or '1.0-strict' evaluating as < '1.0.0'
+    $checkVersion = preg_replace('/[^0-9\.]/', '', $clientVersion);
+    $parts = explode('.', $checkVersion);
+    while (count($parts) < 3 && $checkVersion !== '') {
+        $parts[] = '0';
+        $checkVersion = implode('.', $parts);
+    }
+
+    // Compare versions
+    if (version_compare($checkVersion, MINIMUM_REQUIRED_VERSION, '<')) {
         return true; // Force update
     }
-    
+
     // Compare build numbers
     if ($clientBuild < LATEST_BUILD_NUMBER) {
         return false; // Optional update
     }
-    
+
     return false;
 }
 
 /**
  * Check if update is available
  */
-function isUpdateAvailable($clientVersion, $clientBuild) {
-    if ($clientVersion === null) {
+function isUpdateAvailable($clientVersion, $clientBuild)
+{
+    if ($clientVersion === null || trim($clientVersion) === '') {
         return true; // First time check
     }
-    
+
     // Compare build numbers
     return $clientBuild < LATEST_BUILD_NUMBER;
+}
+
+/**
+ * Get update type
+ */
+function getUpdateType($clientVersion) {
+    if ($clientVersion === null || trim($clientVersion) === '') {
+        return 'major'; // first time
+    }
+
+    $clientVer = preg_replace('/[^0-9\.]/', '', explode('+', $clientVersion)[0]);
+    $latestVer = preg_replace('/[^0-9\.]/', '', explode('+', LATEST_VERSION)[0]);
+    
+    $clientParts = explode('.', $clientVer);
+    $latestParts = explode('.', $latestVer);
+    
+    while(count($clientParts) < 3) $clientParts[] = '0';
+    while(count($latestParts) < 3) $latestParts[] = '0';
+    
+    // Check full rombak (1st digit) or mayor / angka tengah (2nd digit)
+    if (intval($latestParts[0]) > intval($clientParts[0]) || intval($latestParts[1]) > intval($clientParts[1])) {
+        return 'major';
+    }
+    
+    // If only patch or build changes, it's minor
+    return 'minor';
 }
 
 /**
@@ -222,11 +309,13 @@ function isUpdateAvailable($clientVersion, $clientBuild) {
 try {
     $updateRequired = isUpdateRequired($clientVersion, $clientBuild);
     $updateAvailable = isUpdateAvailable($clientVersion, $clientBuild);
-    
+    $updateType = getUpdateType($clientVersion);
+
     $response = [
         'success' => true,
         'update_available' => $updateAvailable,
         'update_required' => $updateRequired,
+        'update_type' => $updateType,
         'latest_version' => LATEST_VERSION,
         'latest_build' => LATEST_BUILD_NUMBER,
         'apk_url' => $TRACKING_URL, // Points to download.php
@@ -235,15 +324,16 @@ try {
         'release_notes' => RELEASE_NOTES,
         'timestamp' => date('Y-m-d H:i:s')
     ];
-    
+
     http_response_code(200);
     echo json_encode($response, JSON_PRETTY_PRINT);
-    
-} catch (Exception $e) {
+
+
+}
+catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
         'success' => false,
         'error' => 'Internal server error: ' . $e->getMessage()
     ]);
 }
-

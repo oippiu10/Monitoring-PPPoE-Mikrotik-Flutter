@@ -18,6 +18,7 @@ class UpdateInfo {
   final String minimumRequiredVersion;
   final List<Map<String, dynamic>> releaseNotes;
   final String timestamp;
+  final String updateType;
 
   UpdateInfo({
     required this.updateAvailable,
@@ -29,6 +30,7 @@ class UpdateInfo {
     required this.minimumRequiredVersion,
     required this.releaseNotes,
     required this.timestamp,
+    required this.updateType,
   });
 
   factory UpdateInfo.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class UpdateInfo {
       releaseNotes:
           List<Map<String, dynamic>>.from(json['release_notes'] ?? []),
       timestamp: json['timestamp'] ?? '',
+      updateType: json['update_type'] ?? 'major', 
     );
   }
 

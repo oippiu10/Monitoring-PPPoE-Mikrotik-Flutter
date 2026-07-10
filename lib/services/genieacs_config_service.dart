@@ -50,13 +50,17 @@ class GenieACSConfigService {
     final url = await getGenieACSUrl();
     final username = await getGenieACSUsername();
     final password = await getGenieACSPassword();
-    return url != null && url.isNotEmpty && 
-           username != null && username.isNotEmpty && 
-           password != null && password.isNotEmpty;
+    return url != null &&
+        url.isNotEmpty &&
+        username != null &&
+        username.isNotEmpty &&
+        password != null &&
+        password.isNotEmpty;
   }
 
   /// Cache GenieACS device data
-  static Future<void> cacheDeviceData(List<Map<String, dynamic>> devices) async {
+  static Future<void> cacheDeviceData(
+      List<Map<String, dynamic>> devices) async {
     final prefs = await SharedPreferences.getInstance();
     final dataJson = json.encode(devices);
     await prefs.setString(_dataCacheKey, dataJson);
@@ -69,7 +73,7 @@ class GenieACSConfigService {
     final prefs = await SharedPreferences.getInstance();
     final dataJson = prefs.getString(_dataCacheKey);
     if (dataJson == null) return [];
-    
+
     try {
       final data = json.decode(dataJson);
       if (data is List) {
@@ -86,8 +90,9 @@ class GenieACSConfigService {
     final prefs = await SharedPreferences.getInstance();
     final lastFetch = prefs.getInt(_lastFetchKey);
     if (lastFetch == null) return false;
-    
-    final age = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastFetch));
+
+    final age = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(lastFetch));
     return age.inMinutes < maxAgeMinutes;
   }
 
@@ -126,17 +131,17 @@ class GenieACSConfigService {
   static String normalizeUrl(String url) {
     String value = url.trim();
     if (value.isEmpty) return '';
-    
+
     // Add http:// if no scheme
     if (!value.startsWith('http://') && !value.startsWith('https://')) {
       value = 'http://$value';
     }
-    
+
     // Remove trailing slash
     if (value.endsWith('/')) {
       value = value.substring(0, value.length - 1);
     }
-    
+
     return value;
   }
 }

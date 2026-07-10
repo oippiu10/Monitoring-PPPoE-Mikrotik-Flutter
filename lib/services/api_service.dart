@@ -1026,7 +1026,14 @@ class ApiService {
           throw Exception(decoded['error'] ?? 'Gagal menambahkan pembayaran');
         }
       } else {
-        throw Exception('Server error (${response.statusCode})');
+        String errorMsg = 'Server error (${response.statusCode})';
+        try {
+          final decoded = json.decode(response.body);
+          if (decoded['error'] != null) errorMsg += ': ${decoded['error']}';
+        } catch (_) {
+          errorMsg += ' - ${response.body}';
+        }
+        throw Exception(errorMsg);
       }
     } catch (e) {
       throw _friendlyException(e);
@@ -1085,7 +1092,14 @@ class ApiService {
         }
         return decoded;
       } else {
-        throw Exception('HTTP Error ${response.statusCode}');
+        String errorMsg = 'HTTP Error ${response.statusCode}';
+        try {
+          final decoded = json.decode(response.body);
+          if (decoded['error'] != null) errorMsg += ': ${decoded['error']}';
+        } catch (_) {
+          errorMsg += ' - ${response.body}';
+        }
+        throw Exception(errorMsg);
       }
     } catch (e) {
       throw _friendlyException(e);

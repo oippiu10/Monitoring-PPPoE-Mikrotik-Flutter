@@ -4,37 +4,47 @@
  * Returns overview statistics for dashboard
  */
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=UTF-8');
 header('Access-Control-Allow-Origin: *');
 
 require_once __DIR__ . '/config.php';
 
+$router_id = trim($_GET['router_id'] ?? '');
+$whereUser = $router_id !== '' ? "WHERE router_id = '" . $conn->real_escape_string($router_id) . "'" : "";
+$wherePayment = $router_id !== '' ? "WHERE u.router_id = '" . $conn->real_escape_string($router_id) . "'" : "";
+$andPayment = $router_id !== '' ? "AND u.router_id = '" . $conn->real_escape_string($router_id) . "'" : "";
+
 try {
-    // Get total users from database
-    $totalUsersQuery = "SELECT COUNT(*) as total FROM users";
-    $totalUsersResult = $conn->query($totalUsersQuery);
-    $totalUsers = $totalUsersResult->fetch_assoc()['total'] ?? 0;
+    // Total User
+    $sumQuery = "SELECT COUNT(*) as total_users FROM users $whereUser";
+    $sumRes = $conn->query($sumQuery);
+    $totalUsers = $sumRes ? $sumRes->fetch_assoc()['total_users'] : 0;
+
+    // Total Revenue (Bulan Ini)
+    $bulanIni = date('Y-m');
+    $revQuery = "
+        SELECT SUM(p.amount) as revenue
+        FROM payments p
+        JOIN users u ON p.user_id = u.id
+        WHERE DATE_FORMAT(p.payment_date, '%Y-%m') = '$bulanIni' $andPayment
+    ";
+    $revRes = $conn->query($revQuery);
+    $revenue = $revRes ? $revRes->fetch_assoc()['revenue'] : 0;
+
+    // Total Active User & Inactive di-Bypass karena kolom disabled/status tidak ada di MySQL
+    // Akan diambil secara live via Mikrotik API di frontend
+    $onlineUsers = 0;
     
-    // Get online users (active status)
-    $onlineUsersQuery = "SELECT COUNT(*) as online FROM users WHERE status = 'active'";
-    $onlineUsersResult = $conn->query($onlineUsersQuery);
-    $onlineUsers = $onlineUsersResult->fetch_assoc()['online'] ?? 0;
-    
-    // Get revenue this month
-    $currentMonth = date('Y-m');
-    $revenueQuery = "SELECT COALESCE(SUM(amount), 0) as revenue 
-                     FROM payments 
-                     WHERE DATE_FORMAT(payment_date, '%Y-%m') = '$currentMonth' 
-                     AND status = 'paid'";
-    $revenueResult = $conn->query($revenueQuery);
-    $revenue = $revenueResult->fetch_assoc()['revenue'] ?? 0;
-    
-    // Get pending payments
-    $pendingQuery = "SELECT COUNT(*) as pending 
-                     FROM payments 
-                     WHERE status = 'pending' OR status IS NULL OR status = 'unpaid'";
-    $pendingResult = $conn->query($pendingQuery);
-    $pendingPayments = $pendingResult->fetch_assoc()['pending'] ?? 0;
+    // Belum Bayar (Belum ada catatan di tabel payments untuk bulan ini)
+    $unpaidQuery = "
+        SELECT COUNT(u.id) as pending
+        FROM users u
+        LEFT JOIN payments p ON p.user_id = u.id 
+            AND DATE_FORMAT(p.payment_date, '%Y-%m') = '$bulanIni'
+        WHERE p.id IS NULL $andPayment
+    ";
+    $unpaidRes = $conn->query($unpaidQuery);
+    $pendingPayments = $unpaidRes ? $unpaidRes->fetch_assoc()['pending'] : 0;
     
     // Get traffic data (last 7 days) - demo for now
     $trafficData = [];
@@ -47,14 +57,8 @@ try {
         ];
     }
     
-    // Get user status distribution
-    $statusQuery = "SELECT 
-                        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as online,
-                        SUM(CASE WHEN status = 'inactive' OR status IS NULL THEN 1 ELSE 0 END) as offline,
-                        SUM(CASE WHEN status = 'disabled' THEN 1 ELSE 0 END) as disabled
-                    FROM users";
-    $statusResult = $conn->query($statusQuery);
-    $statusData = $statusResult->fetch_assoc();
+    // Status distribution di bypass
+    $statusData = ['online' => 0, 'offline' => 0, 'disabled' => 0];
     
     // Get recent activities from admin logs
     $activitiesQuery = "SELECT 

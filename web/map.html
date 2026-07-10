@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+    <link rel="manifest" href="/mikrotik_monitor/manifest.json">
+    <meta name="theme-color" content="#4f8ef7">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-startup-image" href="/mikrotik_monitor/web/icons/Icon-512.png">
     <title>Customer Map — Mikrotik PPPoE Monitor</title>
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -85,8 +90,11 @@
                 </div>
             </div>
             <div class="topbar-right">
-                <button class="btn-icon" onclick="toggleTheme()"><i class="fas fa-moon" id="themeIcon"></i></button>
-                <button class="btn btn-outline btn-sm" onclick="locateMe()"><i class="fas fa-location-arrow"></i> Lokasi Saya</button>
+                <div style="display:flex; align-items:center; justify-content:center; width:36px; height:36px; margin-right:4px;" title="Status Koneksi Mikrotik">
+                    <span id="connectionPulseDot" class="pulse-dot online"></span>
+                </div>
+                <button class="btn-icon" onclick="toggleTheme()" title="Ubah Tema"><i class="fas fa-moon" id="themeIcon"></i></button>
+                <button class="btn-icon" onclick="if(typeof refreshNow==='function'){refreshNow();}else if(typeof refreshData==='function'){refreshData();}else{window.location.reload();}" title="Refresh Halaman"><i class="fas fa-sync"></i></button>
             </div>
         </header>
 
@@ -305,5 +313,59 @@ function showToast(title,msg,type='info'){const icons={success:'fa-check-circle'
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 window.addEventListener('DOMContentLoaded', init);
 </script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/mikrotik_monitor/sw.js').then(reg => {
+      console.log('SW registered!', reg);
+    }).catch(err => console.log('SW registration failed', err));
+  });
+}
+</script>
+
+
+
+
+
+
+
+
+<!-- Mobile Bottom Navigation -->
+<nav class="mobile-bottom-nav">
+    <a href="/mikrotik_monitor/web/monitoring.html" class="bottom-nav-item" data-page="monitoring">
+        <i class="fas fa-chart-line"></i>
+        <span>Monitor</span>
+    </a>
+    <a href="/mikrotik_monitor/web/users.html" class="bottom-nav-item" data-page="users">
+        <i class="fas fa-users"></i>
+        <span>Users</span>
+    </a>
+    <a href="/mikrotik_monitor/web/dashboard.html" class="bottom-nav-item center-btn" data-page="dashboard">
+        <div class="center-icon"><i class="fas fa-home"></i></div>
+        <span>Home</span>
+    </a>
+    <a href="/mikrotik_monitor/web/billing.html" class="bottom-nav-item" data-page="billing">
+        <i class="fas fa-money-bill-wave"></i>
+        <span>Billing</span>
+    </a>
+    <a href="/mikrotik_monitor/web/settings.html" class="bottom-nav-item" data-page="settings">
+        <i class="fas fa-cog"></i>
+        <span>Settings</span>
+    </a>
+</nav>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('.bottom-nav-item').forEach(item => {
+        const p = item.getAttribute('data-page');
+        if (p && currentPath.includes(p)) {
+            item.classList.add('active');
+        }
+    });
+});
+</script>
+
 </body>
 </html>

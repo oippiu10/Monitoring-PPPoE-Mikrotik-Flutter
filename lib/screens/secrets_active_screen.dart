@@ -1488,39 +1488,39 @@ class _SecretsActiveScreenState extends State<SecretsActiveScreen> {
               children: [
                 _buildSearchBar(),
                 Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () async {
-                      final provider =
-                          Provider.of<MikrotikProvider>(context, listen: false);
-                      await provider.refreshData(forceRefresh: true);
-                      await _fetchInterfaces(provider.service);
-                      setState(() {
-                        _currentMax = _itemsPerPage;
-                      });
-                    },
-                    child: Builder(
-                      builder: (context) {
-                        // Calculate totals
-                        final totalUsers = offline.length + online.length;
-                        final totalActive = online.length;
-                        final totalOffline = offline.length;
+                  child: Builder(
+                    builder: (context) {
+                      // Calculate totals
+                      final totalUsers = offline.length + online.length;
+                      final totalActive = online.length;
+                      final totalOffline = offline.length;
 
-                        // For filtered display (when not from initial dashboard navigation)
-                        final filteredTotal = (_processedDashboardArgs &&
-                                _statusFilter != 'Semua')
-                            ? totalUsers
-                            : filtered.length;
-                        final filteredActive = (_processedDashboardArgs &&
-                                _statusFilter != 'Semua')
-                            ? totalActive
-                            : filtered
-                                .where((u) => u['isOnline'] == true)
-                                .length;
-                        final filteredOffline = filteredTotal - filteredActive;
+                      // For filtered display (when not from initial dashboard navigation)
+                      final filteredTotal = (_processedDashboardArgs &&
+                              _statusFilter != 'Semua')
+                          ? totalUsers
+                          : filtered.length;
+                      final filteredActive = (_processedDashboardArgs &&
+                              _statusFilter != 'Semua')
+                          ? totalActive
+                          : filtered
+                              .where((u) => u['isOnline'] == true)
+                              .length;
+                      final filteredOffline = filteredTotal - filteredActive;
 
-                        return Column(
-                          children: [
-                            Expanded(
+                      return Column(
+                        children: [
+                          Expanded(
+                            child: RefreshIndicator(
+                              onRefresh: () async {
+                                final provider =
+                                    Provider.of<MikrotikProvider>(context, listen: false);
+                                await provider.refreshData(forceRefresh: true);
+                                await _fetchInterfaces(provider.service);
+                                setState(() {
+                                  _currentMax = _itemsPerPage;
+                                });
+                              },
                               child: ListView.builder(
                                 controller: _scrollController,
                                 padding: const EdgeInsets.symmetric(
@@ -1810,7 +1810,8 @@ class _SecretsActiveScreenState extends State<SecretsActiveScreen> {
                                 },
                               ),
                             ),
-                            Padding(
+                          ),
+                          Padding(
                               padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1865,11 +1866,10 @@ class _SecretsActiveScreenState extends State<SecretsActiveScreen> {
                       },
                     ),
                   ),
-                ),
-              ],
-            );
-          },
-        ),
+                ],
+              );
+            },
+          ),
       ),
     );
   }

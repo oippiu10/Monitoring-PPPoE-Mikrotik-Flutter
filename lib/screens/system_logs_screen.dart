@@ -245,23 +245,31 @@ class _SystemLogsScreenState extends State<SystemLogsScreen> {
           body: RefreshIndicator(
             onRefresh: () => _loadLogs(refresh: true),
             child: _logs.isEmpty && !_isLoading
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.history,
-                            size: 64,
-                            color: isDark ? Colors.white24 : Colors.white54),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Belum ada aktivitas tercatat',
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.white70,
-                            fontSize: 16,
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.7,
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.history,
+                                  size: 64,
+                                  color: isDark ? Colors.white24 : Colors.white54),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Belum ada aktivitas tercatat',
+                                style: TextStyle(
+                                  color: isDark ? Colors.white54 : Colors.white70,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   )
                 : ListView.builder(
                     controller: _scrollController,

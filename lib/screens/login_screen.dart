@@ -12,6 +12,10 @@ import '../services/mikrotik_native_service.dart';
 import '../services/api_service.dart';
 import '../services/log_service.dart';
 import '../services/live_monitor_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/license_service.dart';
+import '../services/update_service.dart';
+import '../widgets/force_update_dialog.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -71,6 +75,38 @@ class _LoginScreenState extends State<LoginScreen>
     });
     _loadLastSuccessfulLogin();
     _loadSavedLogins();
+
+    // Trigger auto update check for force update
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _enforceUpdateCheck();
+    });
+  }
+
+  Future<void> _enforceUpdateCheck() async {
+    // Hanya cek update di mode release, abaikan di debug/profile
+    if (!kReleaseMode) {
+      debugPrint('[LOGIN] Debug mode: skip enforce update check');
+      return;
+    }
+    try {
+      final updateInfo = await UpdateService.checkForUpdate();
+      if (!mounted) return;
+      if (updateInfo.updateAvailable && updateInfo.updateRequired) {
+        showDialog(
+          context: context,
+          barrierDismissible: true,
+          builder: (context) => PopScope(
+            canPop: true,
+            child: ForceUpdateDialog(
+              updateInfo: updateInfo,
+              isRequired: updateInfo.updateRequired,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[LOGIN] Auto update check failed: $e');
+    }
   }
 
   Future<void> _loadSavedLogins() async {
@@ -317,6 +353,150 @@ Solusi:
     );
   }
 
+  void _showLicenseErrorDialog(String licenseCode, String messageType) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    String title = "Perhatian!";
+    String deskripsi = "Aplikasi ini memelukan lisensi aktif untuk digunakan pada router ini.";
+    if (messageType == 'expired') {
+      title = "Lisensi Expired";
+      deskripsi = "Masa aktif aplikasi Anda sudah habis.";
+    } else if (messageType == 'blocked') {
+      title = "Akses Diblokir";
+      deskripsi = "Lisensi Anda telah diblokir sementara.";
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, spreadRadius: 5)
+              ]
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header Merah Custom
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.red[600],
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20))
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.shield_outlined, color: Colors.white, size: 50),
+                      const SizedBox(height: 10),
+                      Text(title, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    ]
+                  )
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      Text(deskripsi, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: isDark ? Colors.grey[300] : Colors.grey[800])),
+                      const SizedBox(height: 15),
+                      // Box Kode
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.black26 : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.red.withOpacity(0.3))
+                        ),
+                        child: Column(
+                          children: [
+                            Text("KODE PERANGKAT", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.red[400])),
+                            const SizedBox(height: 6),
+                            Text(licenseCode, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.5, color: isDark ? Colors.white : Colors.black)),
+                          ]
+                        )
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // Tombol-tombol CTA
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.copy, size: 18),
+                        label: const Text("SALIN KODE"),
+                        style: ElevatedButton.styleFrom(
+                           minimumSize: const Size(double.infinity, 45),
+                           backgroundColor: isDark ? Colors.grey[800] : Colors.black87,
+                           foregroundColor: Colors.white,
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                        ),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: licenseCode));
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kode disalin! Kirimkan ke admin.")));
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.chat_bubble, size: 18),
+                        label: const Text("HUBUNGI WHATSAPP"),
+                        style: ElevatedButton.styleFrom(
+                           minimumSize: const Size(double.infinity, 45),
+                           backgroundColor: const Color(0xFF25D366),
+                           foregroundColor: Colors.white,
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                        ),
+                        onPressed: () async {
+                          final text = Uri.encodeComponent("Halo Admin, mohon untuk pengaktifan lisensi Mikrotik Monitor saya.\n\nKode perangkat saya:\n*$licenseCode*");
+                          final url = Uri.parse("https://wa.me/6285931564236?text=$text"); 
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // Footer Kontak
+                      Divider(color: Colors.grey[300]),
+                      const SizedBox(height: 5),
+                      const Text("Kontak Alternatif Admin:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const SizedBox(height: 5),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.camera_alt_outlined, size: 14, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text("IG: @yahahahuseinnn", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        ]
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.email_outlined, size: 14, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text("hasanmahfudh112@gmail.com", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        ]
+                      ),
+                      const SizedBox(height: 15),
+                      
+                      TextButton(
+                         onPressed: () => Navigator.pop(context),
+                         child: const Text("Tutup Peringatan Ini", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                      )
+                    ]
+                  )
+                )
+              ]
+            )
+          )
+        );
+      }
+    );
+  }
+
   void _showSuccessDialog(String username) {
     // Capitalize first letter of username
     final capitalizedUsername =
@@ -413,6 +593,29 @@ Solusi:
   }
 
   Future<void> _login() async {
+    // Check update first (hanya di mode release)
+    if (kReleaseMode) {
+      try {
+        final updateInfo = await UpdateService.checkForUpdate();
+        if (updateInfo.updateAvailable && updateInfo.updateRequired) {
+          if (!mounted) return;
+          showDialog(
+            context: context,
+            barrierDismissible: true,
+            builder: (context) => ForceUpdateDialog(
+              updateInfo: updateInfo,
+              isRequired: updateInfo.updateRequired,
+            ),
+          );
+          return; // Prevent login
+        }
+      } catch (e) {
+        debugPrint('[LOGIN] Pre-login update check failed: $e');
+      }
+    } else {
+      debugPrint('[LOGIN] Debug mode: skip pre-login update check');
+    }
+
     if (!_formKey.currentState!.validate()) return;
     setState(() {
       _isLoading = true;
@@ -452,11 +655,16 @@ Solusi:
       // --- ATTEMPT 1 ---
       print('[LOGIN] Attempt 1: ${tryNativeFirst ? "Native API" : "REST API"}');
       final service1 = createService(tryNativeFirst);
-      await service1.getIdentity();
+      
+      try {
+        await service1.getIdentity();
+        // If success, save preference
+        _useNativeApi = tryNativeFirst;
+        print('[LOGIN] Attempt 1 Success!');
+      } finally {
+        if (service1 is MikrotikNativeService) service1.dispose();
+      }
 
-      // If success, save preference
-      _useNativeApi = tryNativeFirst;
-      print('[LOGIN] Attempt 1 Success!');
     } catch (e1) {
       firstError = e1.toString();
       print('[LOGIN] Attempt 1 Failed: $e1');
@@ -466,11 +674,16 @@ Solusi:
         print(
             '[LOGIN] Attempt 2: ${!tryNativeFirst ? "Native API" : "REST API"} (Fallback)');
         final service2 = createService(!tryNativeFirst);
-        await service2.getIdentity();
-
-        // If success, update preference to the one that worked
-        _useNativeApi = !tryNativeFirst;
-        print('[LOGIN] Attempt 2 Success! Switched protocol.');
+        
+        try {
+          await service2.getIdentity();
+          // If success, update preference to the one that worked
+          _useNativeApi = !tryNativeFirst;
+          print('[LOGIN] Attempt 2 Success! Switched protocol.');
+        } finally {
+          if (service2 is MikrotikNativeService) service2.dispose();
+        }
+        
       } catch (e2) {
         print('[LOGIN] Attempt 2 Failed: $e2');
         setState(() {
@@ -489,12 +702,12 @@ Solusi:
       String routerId = '$ip:$port'; // Default fallback
       try {
         final service = createService(_useNativeApi);
-        // Re-login to service to ensure we have a valid session for fetching serial
-        // (Though createService just creates the object, getRouterSerialOrId will likely need to connect/auth internally or reuse if possible)
-        // MikrotikService/NativeService instances are stateless regarding connection in this context,
-        // but getRouterSerialOrId will perform necessary calls.
-        routerId = await service.getRouterSerialOrId();
-        print('[LOGIN] Got Router ID: $routerId');
+        try {
+          routerId = await service.getRouterSerialOrId();
+          print('[LOGIN] Got Router ID: $routerId');
+        } finally {
+          if (service is MikrotikNativeService) service.dispose();
+        }
       } catch (e) {
         print(
             '[LOGIN] Failed to get Serial Number, falling back to IP:Port: $e');
@@ -505,6 +718,28 @@ Solusi:
           print('[LOGIN] API Response indicated failure or empty result.');
         }
       }
+
+      // --- LISENSI CHECKING ---
+      print('\n[LOGIN SCENE] -> Memulai Tahap Pengecekan Lisensi...');
+      final licenseService = LicenseService();
+      final licenseResult = await licenseService.checkLicense(routerId);
+        
+      if (!licenseResult['isValid']) {
+        print('[LOGIN SCENE] -> LISENSI GAGAL! Mencegat user dan menampilkan Pop-Up...');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          _showLicenseErrorDialog(
+            licenseResult['licenseCode'] ?? '', 
+            licenseResult['message'] ?? ''
+          );
+        }
+        return; // Stop the login process
+      } else {
+        print('[LOGIN SCENE] -> LISENSI LOLOS! Melanjutkan proses sistem...');
+      }
+      // --- END LISENSI CHECKING ---
 
       // 2. Data Migration (Backfill) - Run in BACKGROUND (Fire and Forget)
       // Migrate from current IP:Port (if it was used previously)

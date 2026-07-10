@@ -920,27 +920,35 @@ class _ODPScreenState extends State<ODPScreen> {
 
             // ODP List
             Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  setState(() => _isLoading = true);
-                  await _loadODPList();
-                },
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : filteredAndSortedList.isEmpty
-                        ? Center(
-                            child: Text(
-                              'Tidak ada ODP yang ditemukan',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: isDark ? Colors.grey : Colors.grey,
-                              ),
-                            ),
-                          )
-                        : Column(
-                            children: [
-                              Expanded(
-                                child: ListView.separated(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        setState(() => _isLoading = true);
+                        await _loadODPList();
+                      },
+                      child: filteredAndSortedList.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              children: [
+                                SizedBox(
+                                  height: MediaQuery.of(context).size.height * 0.5,
+                                  child: Center(
+                                    child: Text(
+                                      'Tidak ada ODP yang ditemukan',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: isDark ? Colors.grey : Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                Expanded(
+                                  child: ListView.separated(
                                   physics:
                                       const AlwaysScrollableScrollPhysics(),
                                   padding: const EdgeInsets.symmetric(

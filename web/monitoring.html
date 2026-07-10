@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+    <link rel="manifest" href="/mikrotik_monitor/manifest.json">
+    <meta name="theme-color" content="#4f8ef7">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-startup-image" href="/mikrotik_monitor/web/icons/Icon-512.png">
     <title>Monitoring — Mikrotik PPPoE Monitor</title>
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -18,6 +23,21 @@
         .chart-box { height: 200px; }
         .auto-refresh-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
         .refresh-dot { width: 7px; height: 7px; background: var(--success); border-radius: 50%; animation: pulse 1.5s infinite; }
+        .tab-nav { display: flex; align-items: flex-end; padding: 0 16px; padding-top: 16px; background: var(--bg-primary); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+        .tab-btn { background: transparent; border: none; padding: 12px 20px; font-weight: 600; font-size: 13px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: 0.2s; font-family: inherit; margin-bottom: -1px; }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: table; width: 100%; }
+        .th-sort { cursor: pointer; user-select: none; transition: 0.2s; white-space: nowrap; }
+        .th-sort:hover { color: var(--primary); }
+        .th-sort i { margin-left: 4px; font-size: 11px; opacity: 0.5; }
+        .th-sort.active i { opacity: 1; color: var(--primary); }
+        .pagination-container { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border); }
+        .pagination-controls { display: flex; gap: 8px; align-items: center; }
+        .btn-page { padding: 4px 10px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); border-radius: 4px; cursor: pointer; }
+        .btn-page:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-page:hover:not(:disabled) { background: var(--primary); color: #fff; border-color: var(--primary); }
         @media(max-width:900px){ .charts-row{ grid-template-columns:1fr; } }
     </style>
 </head>
@@ -60,12 +80,11 @@
                 </div>
             </div>
             <div class="topbar-right">
-                <div class="auto-refresh-indicator">
-                    <span class="refresh-dot"></span>
-                    Auto-refresh <span id="refreshCountdown">30</span>s
+                <div style="display:flex; align-items:center; justify-content:center; width:36px; height:36px; margin-right:4px;" title="Status Koneksi Mikrotik">
+                    <span id="connectionPulseDot" class="pulse-dot online"></span>
                 </div>
-                <button class="btn-icon" onclick="toggleTheme()"><i class="fas fa-moon" id="themeIcon"></i></button>
-                <button class="btn btn-outline btn-sm" onclick="refreshNow()"><i class="fas fa-sync"></i> Refresh</button>
+                <button class="btn-icon" onclick="toggleTheme()" title="Ubah Tema"><i class="fas fa-moon" id="themeIcon"></i></button>
+                <button class="btn-icon" onclick="if(typeof refreshNow==='function'){refreshNow();}else if(typeof refreshData==='function'){refreshData();}else{window.location.reload();}" title="Refresh Halaman"><i class="fas fa-sync"></i></button>
             </div>
         </header>
 
@@ -92,37 +111,129 @@
 
             <!-- Table -->
             <div class="card">
-                <div class="filter-bar">
+                <div class="tab-nav">
+                    <button class="tab-btn active" onclick="switchTab('active', this)">Sesi Aktif</button>
+                    <button class="tab-btn" onclick="switchTab('offline', this)">Sesi Offline</button>
+                    <button class="tab-btn" onclick="switchTab('secret', this)">Daftar Secret</button>
+                    <button class="tab-btn" onclick="switchTab('profile', this)">Profil Bandwidth</button>
+                    <div style="flex:1; border-bottom: 1px solid var(--border);"></div>
+                </div>
+
+                <div class="filter-bar" style="border-top: none;">
                     <div class="filter-search" style="flex:1">
                         <i class="fas fa-search"></i>
                         <input type="text" id="searchInput" placeholder="Cari username, IP..." oninput="filterTable()">
                     </div>
-                    <span class="badge badge-success" style="padding:6px 12px">
-                        <span class="online-dot"></span> <span id="activeCount">0</span> Online
+                    <span class="badge badge-success" style="padding:6px 12px" id="statusBadge">
+                        <span class="online-dot" id="onlineDot"></span> <span id="activeCount">0</span> <span id="badgeLabel">Online</span>
                     </span>
                 </div>
 
                 <div class="table-wrapper">
-                    <table class="table">
+                    <!-- Table Active -->
+                    <table class="table tab-content active" id="tab-active">
                         <thead>
                             <tr>
-                                <th>Username</th>
-                                <th>IP Address</th>
-                                <th>MAC Address</th>
-                                <th>Upload</th>
-                                <th>Download</th>
-                                <th>Uptime</th>
+                                <th class="th-sort" onclick="handleSort('name')">Username <i class="fas fa-sort"></i></th>
+                                <th class="th-sort" onclick="handleSort('address')">IP Address <i class="fas fa-sort"></i></th>
+                                <th class="th-sort" onclick="handleSort('caller-id')">MAC Address <i class="fas fa-sort"></i></th>
+                                <th class="th-sort" onclick="handleSort('bytes-in')">Upload <i class="fas fa-sort"></i></th>
+                                <th class="th-sort" onclick="handleSort('bytes-out')">Download <i class="fas fa-sort"></i></th>
+                                <th class="th-sort active" onclick="handleSort('uptime')">Uptime <i class="fas fa-sort-up"></i></th>
                                 <th>Service</th>
-                                <th>Aksi</th>
                             </tr>
                         </thead>
-                        <tbody id="sessionsTableBody">
-                            <tr><td colspan="8"><div class="loading-overlay"><div class="loading-spinner"></div> Memuat sesi aktif...</div></td></tr>
+                        <tbody id="activeTableBody">
+                            <tr><td colspan="8" style="padding:0;">
+<div style="display:flex; flex-direction:column;">
+    <div style="padding:16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:16px;">
+        <div class="skeleton-line" style="flex:2;"><div class="skeleton skeleton-circle"></div><div style="flex:1;"><div class="skeleton skeleton-text" style="width:60%; margin-bottom:6px;"></div><div class="skeleton skeleton-text" style="width:40%;"></div></div></div>
+        <div class="skeleton skeleton-badge" style="flex:1;"></div>
+        <div class="skeleton skeleton-text" style="flex:1; height:20px;"></div>
+        <div class="skeleton skeleton-text" style="flex:1; height:20px;"></div>
+    </div>
+    <div style="padding:16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:16px;">
+        <div class="skeleton-line" style="flex:2;"><div class="skeleton skeleton-circle"></div><div style="flex:1;"><div class="skeleton skeleton-text" style="width:70%; margin-bottom:6px;"></div><div class="skeleton skeleton-text" style="width:50%;"></div></div></div>
+        <div class="skeleton skeleton-badge" style="flex:1;"></div>
+        <div class="skeleton skeleton-text" style="flex:1; height:20px;"></div>
+        <div class="skeleton skeleton-text" style="flex:1; height:20px;"></div>
+    </div>
+    <div style="padding:16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:16px;">
+        <div class="skeleton-line" style="flex:2;"><div class="skeleton skeleton-circle"></div><div style="flex:1;"><div class="skeleton skeleton-text" style="width:50%; margin-bottom:6px;"></div><div class="skeleton skeleton-text" style="width:30%;"></div></div></div>
+        <div class="skeleton skeleton-badge" style="flex:1;"></div>
+        <div class="skeleton skeleton-text" style="flex:1; height:20px;"></div>
+        <div class="skeleton skeleton-text" style="flex:1; height:20px;"></div>
+    </div>
+</div>
+</td></tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Table Offline -->
+                    <table class="table tab-content" id="tab-offline">
+                        <thead>
+                            <tr>
+                                <th class="th-sort" onclick="handleSort('name')">Username <i class="fas fa-sort"></i></th>
+                                <th>Password</th>
+                                <th class="th-sort" onclick="handleSort('profile')">Profile <i class="fas fa-sort"></i></th>
+                                <th>Service</th>
+                                <th class="th-sort" onclick="handleSort('last-logged-out')">Terakhir Logout <i class="fas fa-sort"></i></th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="offlineTableBody">
+                            <tr><td colspan="6"><div class="empty-state" style="padding:40px 0;"><i class="fas fa-inbox" style="font-size:30px;color:var(--text-muted);display:block"></i><p style="color:var(--text-secondary);margin-top:10px">Pilih tab atas untuk memuat...</p></div></td></tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Table Secret -->
+                    <table class="table tab-content" id="tab-secret">
+                        <thead>
+                            <tr>
+                                <th class="th-sort" onclick="handleSort('name')">Username <i class="fas fa-sort"></i></th>
+                                <th>Password</th>
+                                <th class="th-sort" onclick="handleSort('profile')">Profile <i class="fas fa-sort"></i></th>
+                                <th>Service</th>
+                                <th class="th-sort" onclick="handleSort('local-address')">Local Address <i class="fas fa-sort"></i></th>
+                                <th class="th-sort" onclick="handleSort('remote-address')">Remote Address <i class="fas fa-sort"></i></th>
+                                <th class="th-sort" onclick="handleSort('last-logged-out')">Terakhir Logout <i class="fas fa-sort"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody id="secretTableBody">
+                            <tr><td colspan="7"><div class="empty-state" style="padding:40px 0;"><i class="fas fa-inbox" style="font-size:30px;color:var(--text-muted);display:block"></i><p style="color:var(--text-secondary);margin-top:10px">Pilih tab atas untuk memuat...</p></div></td></tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Table Profile -->
+                    <table class="table tab-content" id="tab-profile">
+                        <thead>
+                            <tr>
+                                <th class="th-sort" onclick="handleSort('name')">Nama Profil <i class="fas fa-sort"></i></th>
+                                <th>Local Address</th>
+                                <th>Remote Address</th>
+                                <th>Rate Limit (Rx/Tx)</th>
+                                <th>Only One</th>
+                            </tr>
+                        </thead>
+                        <tbody id="profileTableBody">
+                            <tr><td colspan="5"><div class="empty-state" style="padding:40px 0;"><i class="fas fa-inbox" style="font-size:30px;color:var(--text-muted);display:block"></i><p style="color:var(--text-secondary);margin-top:10px">Pilih tab atas untuk memuat...</p></div></td></tr>
                         </tbody>
                     </table>
                 </div>
-                <div style="padding:12px 20px;border-top:1px solid var(--border);">
+                <div class="pagination-container">
                     <span class="pagination-info" id="tableInfo">Memuat...</span>
+                    <div class="pagination-controls">
+                        <select id="pageSize" onchange="changePageSize(this.value)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size:13px; outline:none; cursor:pointer;">
+                            <option value="10">10 / hal</option>
+                            <option value="50" selected>50 / hal</option>
+                            <option value="100">100 / hal</option>
+                            <option value="500">500 / hal</option>
+                            <option value="all">Semua</option>
+                        </select>
+                        <button class="btn-page" id="btnPrev" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i></button>
+                        <span id="pageIndicator" style="font-size: 13px; font-weight: 600;">1 / 1</span>
+                        <button class="btn-page" id="btnNext" onclick="changePage(1)"><i class="fas fa-chevron-right"></i></button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -131,32 +242,16 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- Disconnect Confirm Modal -->
-<div class="modal-overlay" id="disconnectModal">
-    <div class="modal" style="max-width:420px">
-        <div class="modal-header">
-            <h3>Putuskan Koneksi</h3>
-            <button class="modal-close" onclick="closeModal('disconnectModal')"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="modal-body" style="text-align:center;padding:32px 24px">
-            <div style="width:60px;height:60px;background:var(--warning-glow);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:26px;color:var(--warning)"><i class="fas fa-plug"></i></div>
-            <h4 style="margin-bottom:8px">Putuskan <strong id="disconnectUser"></strong>?</h4>
-            <p style="color:var(--text-muted);font-size:13px">Pengguna akan terputus dari internet dan perlu reconnect ulang.</p>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-outline" onclick="closeModal('disconnectModal')">Batal</button>
-            <button class="btn btn-warning" onclick="executeDisconnect()" id="confirmDisconnectBtn" style="color:white">
-                <i class="fas fa-plug"></i> Putuskan
-            </button>
-        </div>
-    </div>
-</div>
-
 <script>
-let allSessions = [];
-let disconnectTarget = null;
+let currentTab = 'active';
+let tabData = { active: [], offline: [], secret: [], profile: [] };
 let refreshTimer = null;
-let countdown = 30;
+let countdown = 2;
+
+// Pagination & Sorting State
+let currentSort = { col: 'uptime', asc: true };
+let currentPage = 1;
+let pageSize = 50;
 
 function init() {
     loadTheme();
@@ -170,65 +265,289 @@ function init() {
 }
 
 function startAutoRefresh() {
-    countdown = 30;
+    countdown = 2; // Update tiap 2 detik
     refreshTimer = setInterval(() => {
         countdown--;
         document.getElementById('refreshCountdown').textContent = countdown;
         if (countdown <= 0) {
             loadSessions();
-            countdown = 30;
+            countdown = 2;
         }
     }, 1000);
 }
 
 function refreshNow() {
-    countdown = 30;
+    countdown = 2;
     loadSessions();
-    showToast('Refresh', 'Data diperbarui', 'info');
+    showToast('Refresh', 'Data diperbarui secara live', 'info');
+}
+
+function changePageSize(size) { pageSize = size === 'all' ? 999999 : parseInt(size); currentPage = 1; renderTable(); }
+function changePage(delta) { currentPage += delta; renderTable(); }
+function handleSort(col) {
+    if (currentSort.col === col) { currentSort.asc = !currentSort.asc; } else { currentSort.col = col; currentSort.asc = true; }
+    document.querySelectorAll('.th-sort').forEach(th => {
+        th.classList.remove('active');
+        const i = th.querySelector('i');
+        if(i) i.className = 'fas fa-sort';
+    });
+    // Hati-hati dengan querySelectorAll jika ada multiple table, sort icon dikhususkan per tabel
+    const targetTable = document.getElementById('tab-' + currentTab);
+    const ths = targetTable.querySelectorAll(`th[onclick="handleSort('${col}')"]`);
+    ths.forEach(th => {
+        th.classList.add('active');
+        const i = th.querySelector('i');
+        if(i) i.className = currentSort.asc ? 'fas fa-sort-up' : 'fas fa-sort-down';
+    });
+    currentPage = 1;
+    renderTable();
+}
+
+function parseUptimeToSeconds(str) {
+    if (!str) return 0;
+    let total = 0;
+    const m = str.match(/(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
+    if (m) {
+        if (m[1]) total += parseInt(m[1]) * 604800; // weeks
+        if (m[2]) total += parseInt(m[2]) * 86400;  // days
+        if (m[3]) total += parseInt(m[3]) * 3600;   // hours
+        if (m[4]) total += parseInt(m[4]) * 60;     // minutes
+        if (m[5]) total += parseInt(m[5]);          // seconds
+    }
+    return total;
+}
+function ip2long(ip) {
+    if(!ip || !ip.includes('.')) return 0;
+    return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
+function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
+    currentTab = tabId;
+    
+    document.getElementById('searchInput').value = '';
+    
+    if (tabId === 'active') {
+        document.getElementById('badgeLabel').textContent = 'Online';
+        document.getElementById('onlineDot').style.background = 'var(--success)';
+        document.getElementById('onlineDot').style.display = 'inline-block';
+        document.getElementById('statusBadge').className = 'badge badge-success';
+        currentSort = { col: 'uptime', asc: true };
+    } else if (tabId === 'offline') {
+        document.getElementById('badgeLabel').textContent = 'Terputus';
+        document.getElementById('onlineDot').style.background = 'var(--danger)';
+        document.getElementById('onlineDot').style.display = 'inline-block';
+        document.getElementById('statusBadge').className = 'badge badge-danger';
+        currentSort = { col: 'last-logged-out', asc: false };
+    } else if (tabId === 'secret') {
+        document.getElementById('badgeLabel').textContent = 'Total Secret';
+        document.getElementById('onlineDot').style.display = 'none';
+        document.getElementById('statusBadge').className = 'badge badge-primary';
+        currentSort = { col: 'name', asc: true };
+    } else {
+        document.getElementById('badgeLabel').textContent = 'Daftar Profil';
+        document.getElementById('onlineDot').style.display = 'none';
+        document.getElementById('statusBadge').className = 'badge badge-warning';
+        currentSort = { col: 'name', asc: true };
+    }
+    
+    // Refresh the table every switch
+    if (tabData[tabId] && tabData[tabId].length > 0) renderTable();
+    fetchTabData(tabId);
+}
+
+async function fetchRaw(cmd) {
+    const r = typeof getActiveRouter === 'function' ? getActiveRouter() : null;
+    const dot = document.getElementById('connectionPulseDot');
+    if (!r) {
+        if(dot) dot.className = 'pulse-dot warning';
+        return [];
+    }
+    try {
+        const params = new URLSearchParams({ host: r.host, port: r.port || 8728, user: r.username || 'admin', pass: r.password || '', cmd: cmd });
+        const res = await fetch('api/mikrotik_live.php?' + params.toString());
+        const data = await res.json();
+        if(dot) dot.className = data.success ? 'pulse-dot online' : 'pulse-dot offline';
+        return data.success ? (data.data || []) : [];
+    } catch(e) {
+        if(dot) dot.className = 'pulse-dot offline';
+        throw e;
+    }
+}
+
+async function fetchTabData(tabId) {
+    const tbodyMap = { active: 'activeTableBody', offline: 'offlineTableBody', secret: 'secretTableBody', profile: 'profileTableBody' };
+    
+    if (!tabData[tabId] || tabData[tabId].length === 0) showNoData('Sedang mendaftarkan data dari Mikrotik...', tbodyMap[tabId]);
+    
+    try {
+        if (tabId === 'offline') {
+            const [act, sec] = await Promise.all([fetchRaw('ppp_active'), fetchRaw('ppp_secret')]);
+            if (act) tabData['active'] = act;
+            if (sec && act) {
+                tabData['secret'] = sec;
+                const activeNames = new Set(act.map(a => a.name));
+                tabData['offline'] = sec.filter(s => !activeNames.has(s.name));
+            } else if (sec) {
+                tabData['offline'] = sec;
+            }
+        } else {
+            const cmdMap = { active: 'ppp_active', secret: 'ppp_secret', profile: 'ppp_profile' };
+            const d = await fetchRaw(cmdMap[tabId]);
+            if (d) tabData[tabId] = d;
+        }
+        
+        if (tabId === 'active') updateStats({ data: tabData['active'], total: tabData['active'].length });
+        
+        if (currentTab === tabId) renderTable();
+    } catch(e) {
+        showNoData('Koneksi ke API lokal terputus.', tbodyMap[tabId]);
+    }
 }
 
 async function loadSessions() {
-    try {
-        const res = await fetch('../../api/get_all_users.php?status=online&limit=500');
-        const data = await res.json();
-        if (data.success && data.data) {
-            allSessions = data.data;
-            updateStats(data);
-            filterTable();
+    await fetchTabData(currentTab);
+}
+
+function renderTable() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const data = tabData[currentTab] || [];
+    
+    let filtered = data;
+    if (q) {
+        filtered = data.filter(s => 
+            (s.username || s.name || '').toLowerCase().includes(q) ||
+            (s.address || s.ip_address || s['caller-id'] || s.profile || '').toLowerCase().includes(q)
+        );
+    }
+    
+    // Sort logic
+    const { col, asc } = currentSort;
+    filtered.sort((a, b) => {
+        let valA = a[col] || a[col.replace('-','_')] || '';
+        let valB = b[col] || b[col.replace('-','_')] || '';
+        
+        // special parsers
+        if (col === 'uptime') {
+            valA = parseUptimeToSeconds(valA);
+            valB = parseUptimeToSeconds(valB);
+        } else if (col === 'last-logged-out') {
+            valA = Date.parse(valA) || 0;
+            valB = Date.parse(valB) || 0;
+        } else if (col === 'bytes-in' || col === 'bytes-out') {
+            valA = parseInt(valA) || 0;
+            valB = parseInt(valB) || 0;
+        } else if (col === 'address' || col === 'local-address' || col === 'remote-address') {
+            valA = ip2long(valA);
+            valB = ip2long(valB);
         } else {
-            // Try alternative endpoint
-            await loadSessionsAlt();
+            valA = String(valA).toLowerCase();
+            valB = String(valB).toLowerCase();
         }
-    } catch(e) {
-        await loadSessionsAlt();
+        
+        if (valA < valB) return asc ? -1 : 1;
+        if (valA > valB) return asc ? 1 : -1;
+        return 0;
+    });
+
+    const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginated = filtered.slice(startIndex, endIndex);
+
+    // Update Pagination UI
+    const endCount = Math.min(endIndex, filtered.length);
+    const startCount = filtered.length === 0 ? 0 : startIndex + 1;
+    document.getElementById('tableInfo').textContent = `Menampilkan ${startCount} - ${endCount} dari ${filtered.length} baris`;
+    document.getElementById('pageIndicator').textContent = `${currentPage} / ${totalPages}`;
+    document.getElementById('btnPrev').disabled = currentPage === 1;
+    document.getElementById('btnNext').disabled = currentPage === totalPages;
+    document.getElementById('activeCount').textContent = data.length;
+    
+    if (currentTab === 'active') {
+        const tbody = document.getElementById('activeTableBody');
+        if (!paginated.length) { showNoData('Tidak ada sesi aktif', 'activeTableBody'); return; }
+        
+        tbody.innerHTML = paginated.map(s => {
+            const bytesUp = formatBytes(parseInt(s.bytes_in || s['bytes-in'] || 0));
+            const bytesDown = formatBytes(parseInt(s.bytes_out || s['bytes-out'] || 0));
+            return `<tr class="session-row">
+                <td><strong>${escHtml(s.username || s.name || '—')}</strong></td>
+                <td><span class="ip-text">${escHtml(s.address || s.ip_address || s['address'] || '—')}</span></td>
+                <td><span class="ip-text fs-12">${escHtml(s['caller-id'] || s.mac_address || '—')}</span></td>
+                <td><span class="traffic-cell" style="color:var(--primary)">↑ ${bytesUp}</span></td>
+                <td><span class="traffic-cell" style="color:var(--orange)">↓ ${bytesDown}</span></td>
+                <td><span class="uptime-text"><i class="fas fa-clock"></i> ${escHtml(s.uptime || s['uptime'] || '—')}</span></td>
+                <td><span class="badge badge-secondary">${escHtml(s.service || s['service'] || 'ppp')}</span></td>
+            </tr>`;
+        }).join('');
+    } else if (currentTab === 'offline') {
+        const tbody = document.getElementById('offlineTableBody');
+        if (!paginated.length) { showNoData('Tidak ada user offline (semua aktif!)', 'offlineTableBody'); return; }
+        
+        tbody.innerHTML = paginated.map(s => {
+            const isDis = s.disabled === 'true' || s.disabled === true;
+            return `<tr style="${isDis ? 'opacity:0.6' : ''}" class="session-row">
+                <td><strong>${escHtml(s.name || '—')}</strong> ${isDis ? '<span class="badge badge-outline" style="color:var(--danger)">Disabled</span>' : ''}</td>
+                <td><span class="ip-text" style="color:var(--text-muted)">***</span></td>
+                <td><span class="badge badge-outline">${escHtml(s.profile || 'default')}</span></td>
+                <td>${escHtml(s.service || 'any')}</td>
+                <td><span class="uptime-text"><i class="fas fa-clock"></i> ${escHtml(s['last-logged-out'] || '—')}</span></td>
+                <td><span class="badge badge-danger">Offline</span></td>
+            </tr>`;
+        }).join('');
+    } else if (currentTab === 'secret') {
+        const tbody = document.getElementById('secretTableBody');
+        if (!paginated.length) { showNoData('Tidak ada data secret', 'secretTableBody'); return; }
+        
+        tbody.innerHTML = paginated.map(s => {
+            const isDis = s.disabled === 'true' || s.disabled === true;
+            return `<tr style="${isDis ? 'opacity:0.6' : ''}">
+                <td><strong>${escHtml(s.name || '—')}</strong> ${isDis ? '<span class="badge badge-outline" style="color:var(--danger)">Disabled</span>' : ''}</td>
+                <td><span class="ip-text" style="color:var(--text-muted)">***</span></td>
+                <td><span class="badge badge-outline">${escHtml(s.profile || 'default')}</span></td>
+                <td>${escHtml(s.service || 'any')}</td>
+                <td><span class="ip-text">${escHtml(s['local-address'] || '—')}</span></td>
+                <td><span class="ip-text">${escHtml(s['remote-address'] || '—')}</span></td>
+                <td><span class="uptime-text">${escHtml(s['last-logged-out'] || '—')}</span></td>
+            </tr>`;
+        }).join('');
+    } else if (currentTab === 'profile') {
+        const tbody = document.getElementById('profileTableBody');
+        if (!paginated.length) { showNoData('Tidak memuat profil', 'profileTableBody'); return; }
+        
+        tbody.innerHTML = paginated.map(s => {
+            return `<tr>
+                <td><strong>${escHtml(s.name || '—')}</strong></td>
+                <td><span class="ip-text">${escHtml(s['local-address'] || '—')}</span></td>
+                <td><span class="ip-text">${escHtml(s['remote-address'] || '—')}</span></td>
+                <td><span class="traffic-cell" style="color:var(--success)">${escHtml(s['rate-limit'] || 'Unlimited')}</span></td>
+                <td>${escHtml(s['only-one'] || 'default')}</td>
+            </tr>`;
+        }).join('');
     }
 }
 
-async function loadSessionsAlt() {
-    try {
-        const res = await fetch('../../api/check_user_group.php?group=active');
-        const data = await res.json();
-        if (data && Array.isArray(data)) {
-            allSessions = data;
-            document.getElementById('statActive').textContent = data.length;
-            filterTable();
-        } else {
-            showNoData();
-        }
-    } catch(e) {
-        showNoData();
-    }
+function filterTable() {
+    renderTable();
 }
 
-function showNoData() {
-    document.getElementById('sessionsTableBody').innerHTML = `<tr><td colspan="8"><div class="empty-state"><i class="fas fa-plug"></i><h4>Tidak dapat memuat sesi</h4><p>Periksa koneksi ke server Mikrotik</p></div></td></tr>`;
+function showNoData(msg = 'Periksa koneksi ke server Mikrotik', targetId = 'activeTableBody') {
+    const cols = targetId === 'profileTableBody' ? 5 : 7;
+    const el = document.getElementById(targetId);
+    if(el) el.innerHTML = `<tr><td colspan="${cols}"><div class="empty-state" style="padding:40px 0;"><i class="fas fa-inbox" style="font-size:30px;color:var(--text-muted);margin-bottom:10px;display:block"></i><p style="color:var(--text-secondary);">${escHtml(msg)}</p></div></td></tr>`;
 }
 
 function updateStats(data) {
     const sessions = data.data || [];
     document.getElementById('statActive').textContent = sessions.length;
-    document.getElementById('activeCount').textContent = sessions.length;
-    document.getElementById('statActivePct').textContent = `dari ${data.total || sessions.length} total user`;
+    document.getElementById('statActivePct').textContent = 'tersambung hari ini';
 
     let totalUp = 0, totalDown = 0;
     sessions.forEach(s => {
@@ -238,77 +557,6 @@ function updateStats(data) {
 
     document.getElementById('statUpload').textContent = formatBytes(totalUp);
     document.getElementById('statDownload').textContent = formatBytes(totalDown);
-}
-
-function filterTable() {
-    const q = document.getElementById('searchInput').value.toLowerCase();
-    const filtered = allSessions.filter(s =>
-        (s.username || '').toLowerCase().includes(q) ||
-        (s.address || s.ip_address || s['caller-id'] || '').toLowerCase().includes(q)
-    );
-
-    document.getElementById('tableInfo').textContent = `Menampilkan ${filtered.length} dari ${allSessions.length} sesi aktif`;
-    document.getElementById('activeCount').textContent = allSessions.length;
-
-    const tbody = document.getElementById('sessionsTableBody');
-    if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><i class="fas fa-wifi"></i><h4>Tidak ada sesi aktif</h4><p>Tidak ada pengguna yang terhubung saat ini</p></div></td></tr>`;
-        return;
-    }
-
-    tbody.innerHTML = filtered.map(s => {
-        const bytesUp = formatBytes(parseInt(s.bytes_in || s['bytes-in'] || 0));
-        const bytesDown = formatBytes(parseInt(s.bytes_out || s['bytes-out'] || 0));
-        return `<tr class="session-row">
-            <td><strong>${escHtml(s.username || s.name || '—')}</strong></td>
-            <td><span class="ip-text">${escHtml(s.address || s.ip_address || s['address'] || '—')}</span></td>
-            <td><span class="ip-text fs-12">${escHtml(s['caller-id'] || s.mac_address || '—')}</span></td>
-            <td><span class="traffic-cell" style="color:var(--primary)">↑ ${bytesUp}</span></td>
-            <td><span class="traffic-cell" style="color:var(--orange)">↓ ${bytesDown}</span></td>
-            <td><span class="uptime-text"><i class="fas fa-clock"></i> ${escHtml(s.uptime || s['uptime'] || '—')}</span></td>
-            <td><span class="badge badge-secondary">${escHtml(s.service || s['service'] || 'ppp')}</span></td>
-            <td>
-                <button class="btn btn-warning btn-sm" onclick="openDisconnect('${escHtml(s.username||s.name||'')}', '${escHtml(s['.id']||s.id||'')}')">
-                    <i class="fas fa-plug"></i> Putus
-                </button>
-            </td>
-        </tr>`;
-    }).join('');
-}
-
-function openDisconnect(username, id) {
-    disconnectTarget = { username, id };
-    document.getElementById('disconnectUser').textContent = username;
-    openModal('disconnectModal');
-}
-
-async function executeDisconnect() {
-    if (!disconnectTarget) return;
-    const btn = document.getElementById('confirmDisconnectBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-    try {
-        const res = await fetch('../../api/mikrotik_service.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'disconnect', username: disconnectTarget.username, id: disconnectTarget.id })
-        });
-        const data = await res.json();
-        if (data.success) {
-            showToast('Berhasil', `${disconnectTarget.username} diputuskan`, 'success');
-            closeModal('disconnectModal');
-            setTimeout(loadSessions, 1000);
-        } else {
-            showToast('Gagal', data.message || 'Gagal memutus koneksi', 'error');
-        }
-    } catch(e) {
-        showToast('Error', 'Tidak dapat terhubung ke server', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-plug"></i> Putuskan';
-        disconnectTarget = null;
-    }
 }
 
 function loadTheme() { if(localStorage.getItem('theme')==='light'){document.body.classList.add('light-theme');document.getElementById('themeIcon').className='fas fa-sun';} }
@@ -325,5 +573,60 @@ function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt
 const ipText = document.createElement('style');ipText.textContent='.ip-text{font-family:monospace;font-size:12px;color:var(--text-secondary);}';document.head.appendChild(ipText);
 window.addEventListener('DOMContentLoaded', init);
 </script>
+<script src="assets/js/router_selector.js"></script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/mikrotik_monitor/sw.js').then(reg => {
+      console.log('SW registered!', reg);
+    }).catch(err => console.log('SW registration failed', err));
+  });
+}
+</script>
+
+
+
+
+
+
+
+
+<!-- Mobile Bottom Navigation -->
+<nav class="mobile-bottom-nav">
+    <a href="/mikrotik_monitor/web/monitoring.html" class="bottom-nav-item" data-page="monitoring">
+        <i class="fas fa-chart-line"></i>
+        <span>Monitor</span>
+    </a>
+    <a href="/mikrotik_monitor/web/users.html" class="bottom-nav-item" data-page="users">
+        <i class="fas fa-users"></i>
+        <span>Users</span>
+    </a>
+    <a href="/mikrotik_monitor/web/dashboard.html" class="bottom-nav-item center-btn" data-page="dashboard">
+        <div class="center-icon"><i class="fas fa-home"></i></div>
+        <span>Home</span>
+    </a>
+    <a href="/mikrotik_monitor/web/billing.html" class="bottom-nav-item" data-page="billing">
+        <i class="fas fa-money-bill-wave"></i>
+        <span>Billing</span>
+    </a>
+    <a href="/mikrotik_monitor/web/settings.html" class="bottom-nav-item" data-page="settings">
+        <i class="fas fa-cog"></i>
+        <span>Settings</span>
+    </a>
+</nav>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('.bottom-nav-item').forEach(item => {
+        const p = item.getAttribute('data-page');
+        if (p && currentPath.includes(p)) {
+            item.classList.add('active');
+        }
+    });
+});
+</script>
+
 </body>
 </html>

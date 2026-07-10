@@ -132,7 +132,7 @@ body {
   top: 0;
   left: 0;
   height: 100vh;
-  z-index: 100;
+  z-index: 10001;
   transition: var(--transition-slow);
   overflow: hidden;
 }
@@ -1407,3 +1407,298 @@ body {
 .fs-13 {
   font-size: 13px;
 }
+
+/* ===================================
+   ENHANCED MOBILE RESPONSIVENESS
+   =================================== */
+
+@media (max-width: 768px) {
+  /* Prevent tabs overflow */
+  .tab-nav {
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+  .tab-btn {
+    flex-shrink: 0;
+  }
+
+  /* Fix table wrappers */
+  .table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Force table minimum width so it triggers horizontal scroll instead of squishing */
+  .table {
+    min-width: 700px; /* Menjaga agar detail tabel tetap leluasa dibaca */
+  }
+
+  /* Pagination wrap */
+  .pagination-container {
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+  }
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* Modals */
+  .modal-content {
+    width: 95% !important;
+    margin: 10% auto !important;
+  }
+}
+
+@media (max-width: 480px) {
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+  .app-layout, .main-content {
+    overflow-x: hidden;
+    width: 100%;
+  }
+  .topbar { 
+    padding: 10px 16px; 
+    height: auto; 
+    min-height: var(--topbar-height);
+    flex-wrap: wrap; /* Membiarkan elemen turun ke baris baru jika penuh */
+    gap: 8px;
+  }
+  .topbar-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .topbar-left h1 {
+    font-size: 16px;
+  }
+  .topbar-breadcrumb {
+    display: none; /* Menyembunyikan subtitle untuk memberi ruang pada layar HP */
+  }
+  .page-content { padding: 12px; overflow-x: hidden; width: 100%; }
+  .card-header, .card-body { padding: 16px; }
+  
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .filter-search {
+    width: 100%;
+    min-width: 0; /* Menghilangkan min-width 100% yang bergeser keluar */
+    flex: 1 1 100%;
+  }
+  .filter-bar .badge {
+    align-self: flex-start;
+  }
+
+  /* Compact 2x2 Stats Grid for Mobile */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important; /* Memaksa 2 kolom meski layar sempit */
+    gap: 12px;
+  }
+  .stat-card {
+    flex-direction: column; /* Mengubah ikon & teks menjadi atas-bawah */
+    align-items: flex-start;
+    padding: 14px;
+    gap: 10px;
+  }
+  .stat-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 18px;
+  }
+  .stat-details .stat-label {
+    font-size: 10px;
+    white-space: normal;
+    line-height: 1.3;
+  }
+  .stat-details .stat-value {
+    font-size: 16px;
+  }
+  .stat-details .stat-change {
+    font-size: 10px;
+  }
+}
+
+/* ===================================
+   MOBILE BOTTOM NAVIGATION
+   =================================== */
+
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(26, 29, 46, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  z-index: 9999;
+  justify-content: space-around;
+  align-items: flex-end;
+  padding: 8px 0;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+
+.light-theme .mobile-bottom-nav {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 500;
+  gap: 4px;
+  transition: var(--transition);
+  flex: 1;
+}
+
+.bottom-nav-item i {
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+
+.bottom-nav-item.active {
+  color: var(--primary);
+}
+
+.bottom-nav-item:active {
+  transform: scale(0.9);
+}
+
+/* Home Button in the Center */
+.bottom-nav-item.center-btn {
+  position: relative;
+  z-index: 10000;
+}
+.bottom-nav-item.center-btn .center-icon {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 54px;
+  height: 54px;
+  background: var(--primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 6px 16px rgba(79, 142, 247, 0.4);
+  transition: var(--transition);
+}
+.bottom-nav-item.center-btn i {
+  font-size: 22px;
+  margin-bottom: 0;
+}
+.bottom-nav-item.center-btn span {
+  margin-top: 28px; /* Memberi ruang agar teks Home tidak tertimpa ikon absolute */
+}
+.bottom-nav-item.center-btn.active .center-icon {
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 6px 16px rgba(255, 255, 255, 0.4);
+}
+
+/* ===================================
+   SKELETON LOADING UI
+   =================================== */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-input) 25%, var(--bg-card-hover) 50%, var(--bg-input) 75%);
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.5s infinite linear;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+@keyframes skeletonPulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-text {
+  height: 16px;
+  width: 100%;
+  border-radius: 4px;
+}
+.skeleton-badge {
+  height: 24px;
+  width: 70px;
+  border-radius: 12px;
+}
+.skeleton-circle {
+  height: 38px;
+  width: 38px;
+  border-radius: 50%;
+}
+.skeleton-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    display: flex;
+  }
+  .app-layout {
+    padding-bottom: 80px; /* Offset for bottom nav center button */
+  }
+}
+
+/* ===================================
+   DYNAMIC PULSE INDICATOR
+   =================================== */
+.pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  position: relative;
+  display: block;
+}
+.pulse-dot.online {
+  background-color: var(--success);
+  box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+  animation: pulse-green 2s infinite;
+}
+.pulse-dot.offline {
+  background-color: var(--danger);
+  box-shadow: 0 0 0 rgba(239, 68, 68, 0.4);
+  animation: pulse-red 2s infinite;
+}
+.pulse-dot.warning {
+  background-color: var(--warning);
+  box-shadow: 0 0 0 rgba(245, 158, 11, 0.4);
+  animation: pulse-yellow 2s infinite;
+}
+
+@keyframes pulse-green {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+@keyframes pulse-red {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+@keyframes pulse-yellow {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+

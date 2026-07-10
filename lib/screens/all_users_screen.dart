@@ -33,6 +33,12 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
     'Profile (Z-A)',
     'ODP (A-Z)',
     'ODP (Z-A)',
+    'Data Belum Lengkap (Campuran)',
+    'WA Kosong (Prioritas)',
+    'Maps/Koordinat Kosong',
+    'ODP Kosong (Prioritas)',
+    'Alamat Kosong (Prioritas)',
+    'Redaman Kosong (Prioritas)',
   ];
 
   bool _processedArgs = false;
@@ -300,6 +306,73 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
           if (aOdp.isEmpty) return 1;
           if (bOdp.isEmpty) return -1;
           return bOdp.compareTo(aOdp);
+        case 'Data Belum Lengkap (Campuran)':
+          int completeness(Map<String, dynamic> u) {
+            int score = 0;
+            final wa = u['wa']?.toString().trim() ?? '';
+            if (wa.isEmpty || wa == '-') score++;
+            
+            final odp = u['odp_name']?.toString().trim() ?? '';
+            if (odp.isEmpty || odp == '-') score++;
+            
+            final maps = u['maps']?.toString().trim() ?? '';
+            final lat = u['lat']?.toString().trim() ?? '';
+            if ((maps.isEmpty || maps == '-') && (lat.isEmpty || lat == '-')) score++;
+            
+            return score;
+          }
+          final scoreA = completeness(a);
+          final scoreB = completeness(b);
+          if (scoreA != scoreB) {
+            return scoreB.compareTo(scoreA);
+          }
+          return a['username'].toString().compareTo(b['username'].toString());
+        case 'WA Kosong (Prioritas)':
+          int checkWa(Map<String, dynamic> u) {
+            final wa = u['wa']?.toString().trim() ?? '';
+            return (wa.isEmpty || wa == '-') ? 1 : 0;
+          }
+          final scoreAWa = checkWa(a);
+          final scoreBWa = checkWa(b);
+          if (scoreAWa != scoreBWa) return scoreBWa.compareTo(scoreAWa);
+          return a['username'].toString().compareTo(b['username'].toString());
+        case 'Maps/Koordinat Kosong':
+          int checkMaps(Map<String, dynamic> u) {
+            final maps = u['maps']?.toString().trim() ?? '';
+            final lat = u['lat']?.toString().trim() ?? '';
+            return ((maps.isEmpty || maps == '-') && (lat.isEmpty || lat == '-')) ? 1 : 0;
+          }
+          final scoreAMaps = checkMaps(a);
+          final scoreBMaps = checkMaps(b);
+          if (scoreAMaps != scoreBMaps) return scoreBMaps.compareTo(scoreAMaps);
+          return a['username'].toString().compareTo(b['username'].toString());
+        case 'ODP Kosong (Prioritas)':
+          int checkOdp(Map<String, dynamic> u) {
+            final odp = u['odp_name']?.toString().trim() ?? '';
+            return (odp.isEmpty || odp == '-') ? 1 : 0;
+          }
+          final scoreAOdp = checkOdp(a);
+          final scoreBOdp = checkOdp(b);
+          if (scoreAOdp != scoreBOdp) return scoreBOdp.compareTo(scoreAOdp);
+          return a['username'].toString().compareTo(b['username'].toString());
+        case 'Alamat Kosong (Prioritas)':
+          int checkAlamat(Map<String, dynamic> u) {
+            final alamat = u['alamat']?.toString().trim() ?? '';
+            return (alamat.isEmpty || alamat == '-') ? 1 : 0;
+          }
+          final scoreAAlamat = checkAlamat(a);
+          final scoreBAlamat = checkAlamat(b);
+          if (scoreAAlamat != scoreBAlamat) return scoreBAlamat.compareTo(scoreAAlamat);
+          return a['username'].toString().compareTo(b['username'].toString());
+        case 'Redaman Kosong (Prioritas)':
+          int checkRedaman(Map<String, dynamic> u) {
+            final redaman = u['redaman']?.toString().trim() ?? '';
+            return (redaman.isEmpty || redaman == '-') ? 1 : 0;
+          }
+          final scoreARedaman = checkRedaman(a);
+          final scoreBRedaman = checkRedaman(b);
+          if (scoreARedaman != scoreBRedaman) return scoreBRedaman.compareTo(scoreARedaman);
+          return a['username'].toString().compareTo(b['username'].toString());
         default:
           return 0;
       }
@@ -343,6 +416,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
     );
     if (confirm == true) {
       try {
+        if (!mounted) return;
         // Asumsikan ApiService punya deleteUser
         final routerIdProvider =
             Provider.of<RouterSessionProvider>(context, listen: false);
@@ -564,19 +638,19 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                             _infoRow(Icons.category, 'Profile',
                                 user['profile'] ?? '-'),
                             if (user['odp_name'] != null &&
-                                user['odp_name'].isNotEmpty) ...[
+                                user['odp_name'].toString().isNotEmpty) ...[
                               _buildDivider(),
                               _infoRow(
-                                  Icons.call_split, 'ODP', user['odp_name']),
+                                  Icons.call_split, 'ODP', user['odp_name'].toString()),
                             ],
-                            if (user['wa']?.isNotEmpty ?? false) ...[
+                            if (user['wa']?.toString().isNotEmpty ?? false) ...[
                               _buildDivider(),
-                              _infoRow(null, 'WA', user['wa'] ?? '-',
+                              _infoRow(null, 'WA', user['wa']?.toString() ?? '-',
                                   isWA: true),
                             ],
-                            if (user['maps']?.isNotEmpty ?? false) ...[
+                            if (user['maps']?.toString().isNotEmpty ?? false) ...[
                               _buildDivider(),
-                              _infoRow(null, 'Maps', user['maps'] ?? '-',
+                              _infoRow(null, 'Maps', user['maps']?.toString() ?? '-',
                                   isMaps: true),
                             ],
                             if (user['alamat'] != null &&
@@ -627,7 +701,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                                 lng: user['lng'],
                               ),
                             ],
-                            if (user['tanggal_dibuat']?.isNotEmpty ??
+                            if (user['tanggal_dibuat']?.toString().isNotEmpty ??
                                 false) ...[
                               _buildDivider(),
                               _infoRow(
@@ -1100,55 +1174,64 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                 ],
               ),
             ),
+
             // User List
             Expanded(
-              child: RefreshIndicator(
-                onRefresh: _loadData,
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _error != null
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.error_outline,
-                                  color: Colors.red,
-                                  size: 48,
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.red,
+                                size: 48,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _error!,
+                                style: const TextStyle(
+                                    color: Colors.red, fontSize: 16),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: _loadData,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('COBA LAGI'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade800,
+                                  foregroundColor: Colors.white,
                                 ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  _error!,
-                                  style: TextStyle(
-                                      color: Colors.red, fontSize: 16),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 16),
-                                ElevatedButton.icon(
-                                  onPressed: _loadData,
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('COBA LAGI'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue.shade800,
-                                    foregroundColor: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : Builder(
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadData,
+                          child: Builder(
                             builder: (context) {
                               final filteredUsers =
                                   _getFilteredUsersByPPP(_pppSecrets);
                               return filteredUsers.isEmpty
-                                  ? const Center(
-                                      child: Text(
-                                        'Tidak ada user yang ditemukan',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.grey,
+                                  ? ListView(
+                                      physics: const AlwaysScrollableScrollPhysics(),
+                                      children: [
+                                        SizedBox(
+                                          height: MediaQuery.of(context).size.height * 0.5,
+                                          child: const Center(
+                                            child: Text(
+                                              'Tidak ada user yang ditemukan',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                      ],
                                     )
                                   : ListView.separated(
                                       padding: const EdgeInsets.symmetric(
@@ -1210,7 +1293,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                                                                 .start,
                                                         children: [
                                                           Text(
-                                                            user['username'],
+                                                            user['username'].toString(),
                                                             style: TextStyle(
                                                               fontWeight:
                                                                   FontWeight
@@ -1233,7 +1316,8 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                                                                         .black54),
                                                           ),
                                                           if (user['odp_name']
-                                                                  ?.isNotEmpty ??
+                                                                  ?.toString()
+                                                                  .isNotEmpty ??
                                                               false)
                                                             Row(
                                                               children: [
@@ -1267,7 +1351,8 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                                                               ],
                                                             ),
                                                           if (user['wa']
-                                                                  ?.isNotEmpty ??
+                                                                  ?.toString()
+                                                                  .isNotEmpty ??
                                                               false)
                                                             Row(
                                                               children: [
@@ -1294,7 +1379,8 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                                                               ],
                                                             ),
                                                           if (user['maps']
-                                                                  ?.isNotEmpty ??
+                                                                  ?.toString()
+                                                                  .isNotEmpty ??
                                                               false)
                                                             Row(
                                                               children: [

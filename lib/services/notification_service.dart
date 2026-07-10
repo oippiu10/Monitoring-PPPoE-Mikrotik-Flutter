@@ -168,6 +168,56 @@ class NotificationService {
     }
   }
 
+  /// Show download progress notification (Android only)
+  Future<void> showDownloadProgress(int progress, {required String version}) async {
+    try {
+      final enabled = await isNotificationEnabled();
+      if (!enabled) return;
+
+      final androidDetails = AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDescription,
+        importance: Importance.max,
+        priority: Priority.high,
+        onlyAlertOnce: true, // Only ring/vibrate once, update silently
+        showProgress: true,
+        maxProgress: 100,
+        progress: progress,
+        icon: '@mipmap/ic_launcher',
+        ongoing: true, // Persistent (non-dismissible)
+        autoCancel: false,
+      );
+
+      // Notes: showProgress is not available on iOS. The default settings are safe.
+      const iosDetails = DarwinNotificationDetails();
+
+      final details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      await _notifications.show(
+        1, // Use fixed ID 1 for ongoing downloads
+        'Mengunduh Update v$version',
+        progress == 100 ? 'Menyelesaikan unduhan...' : '$progress% Selesai',
+        details,
+        payload: 'download_progress',
+      );
+    } catch (e) {
+      print('[NOTIFICATION] Error showing download progress: $e');
+    }
+  }
+
+  /// Cancel ongoing download notification
+  Future<void> cancelDownloadNotification() async {
+    try {
+      await _notifications.cancel(1);
+    } catch (e) {
+      print('[NOTIFICATION] Error cancelling download notification: $e');
+    }
+  }
+
   /// Get or generate device ID
   Future<String> getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();

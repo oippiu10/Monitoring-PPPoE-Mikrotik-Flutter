@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
 import '../services/update_service.dart';
-import 'update_download_dialog.dart';
+import '../services/notification_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class UpdateDialog extends StatefulWidget {
   final UpdateInfo updateInfo;
@@ -23,72 +24,62 @@ class UpdateDialog extends StatefulWidget {
 class _UpdateDialogState extends State<UpdateDialog> {
   bool _isDownloading = false;
   bool _isInstalling = false;
-  int _downloadedBytes = 0;
-  int _totalBytes = 0;
+  double _downloadProgress = 0.0;
 
   Future<void> _handleDownload() async {
-    try {
-      setState(() => _isDownloading = true);
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0.0;
+    });
 
-      final filePath = await UpdateService.downloadApk(
+    try {
+      final String apkPath = await UpdateService.downloadApk(
         widget.updateInfo.apkUrl,
         (downloaded, total) {
           if (mounted) {
+            final progress = total > 0 ? downloaded / total : 0.0;
             setState(() {
-              _downloadedBytes = downloaded;
-              _totalBytes = total;
+              _downloadProgress = progress;
             });
+            // Tampilkan notifikasi persistent dengan progress bar
+            NotificationService().showDownloadProgress(
+               (progress * 100).toInt(),
+               version: widget.updateInfo.latestVersion.split('+')[0],
+            );
           }
         },
       );
 
-      // Download complete, try to install
       if (mounted) {
         setState(() {
           _isDownloading = false;
           _isInstalling = true;
         });
+      }
 
-        // Log path for debugging
-        print('[UPDATE] Downloaded to: $filePath');
-
-        final installed = await UpdateService.installApk(filePath);
-
-        if (mounted) {
-          setState(() => _isInstalling = false);
-
-          if (widget.isRequired || installed) {
-            Navigator.of(context).pop();
-          }
-
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(installed
-                    ? 'APK berhasil diunduh. Membuka installer...'
-                    : 'APK disimpan di: $filePath'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 4),
-              ),
-            );
-          }
-        }
+      // Hapus notifikasi saat masuk ke tahapan instalasi native
+      await NotificationService().cancelDownloadNotification();
+      await UpdateService.installApk(apkPath);
+      
+      if (mounted) {
+        setState(() {
+          _isInstalling = false;
+        });
       }
     } catch (e) {
+      await NotificationService().cancelDownloadNotification();
+      
       if (mounted) {
         setState(() {
           _isDownloading = false;
           _isInstalling = false;
         });
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Download failed: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengunduh update: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -97,54 +88,97 @@ class _UpdateDialogState extends State<UpdateDialog> {
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
 
+    Widget dialogContent;
+    if (_isDownloading || _isInstalling) {
+      dialogContent = _buildInstallingDialog(context, isDark);
+    } else {
+      dialogContent = _buildUpdateInfoDialog(context, isDark);
+    }
+
+    // Kunci layar dialog (tidak bisa ditutup paksa / tombol back) saat download/install
     return PopScope(
-      canPop: !_isDownloading, // Prevent dismissing if downloading
-      child: _isDownloading
-          ? UpdateDownloadDialog(
-              downloadedBytes: _downloadedBytes, totalBytes: _totalBytes)
-          : _isInstalling
-              ? _buildInstallingDialog(context, isDark)
-              : _buildUpdateInfoDialog(context, isDark),
+      canPop: !_isDownloading && !_isInstalling,
+      child: dialogContent,
     );
   }
 
   Widget _buildInstallingDialog(BuildContext context, bool isDark) {
     return AlertDialog(
       backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.green.shade900,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.install_mobile_rounded,
-                color: Colors.green, size: 28),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text('Installing Update',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87)),
-          ),
-        ],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
       ),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        const CircularProgressIndicator(),
-        const SizedBox(height: 16),
-        Text('Opening installer...',
-            style: TextStyle(
-                fontSize: 14, color: isDark ? Colors.white70 : Colors.black54)),
-      ]),
+      content: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isDownloading) ...[
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: CircularProgressIndicator(
+                      value: _downloadProgress,
+                      strokeWidth: 8,
+                      backgroundColor: isDark ? Colors.blue.shade900 : Colors.blue.shade50,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isDark ? Colors.blue.shade300 : Colors.blue.shade600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${(_downloadProgress * 100).toInt()}%',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Mengunduh Update...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Mohon tunggu sebentar',
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
+              ),
+            ] else ...[
+              const SizedBox(
+                width: 60,
+                height: 60,
+                child: CircularProgressIndicator(strokeWidth: 4),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Membuka Installer...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildUpdateInfoDialog(BuildContext context, bool isDark) {
+    final cleanVersion = widget.updateInfo.latestVersion.split('+')[0];
     return AlertDialog(
       backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
       shape: RoundedRectangleBorder(
@@ -198,7 +232,6 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'Versi Terbaru:',
@@ -209,13 +242,17 @@ class _UpdateDialogState extends State<UpdateDialog> {
                           isDark ? Colors.blue.shade200 : Colors.blue.shade700,
                     ),
                   ),
-                  Text(
-                    'v${widget.updateInfo.latestVersion} (Build ${widget.updateInfo.latestBuild})',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color:
-                          isDark ? Colors.blue.shade100 : Colors.blue.shade900,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'v$cleanVersion (Build ${widget.updateInfo.latestBuild})',
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            isDark ? Colors.blue.shade100 : Colors.blue.shade900,
+                      ),
                     ),
                   ),
                 ],
@@ -223,24 +260,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             ),
             const SizedBox(height: 16),
 
-            // File size
-            Row(
-              children: [
-                Icon(
-                  Icons.file_download,
-                  size: 18,
-                  color: isDark ? Colors.white70 : Colors.black54,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Ukuran: ${widget.updateInfo.formattedSize}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? Colors.white70 : Colors.black54,
-                  ),
-                ),
-              ],
-            ),
+            // File size removed as requested
             const SizedBox(height: 16),
 
             // Release notes
@@ -352,33 +372,65 @@ class _UpdateDialogState extends State<UpdateDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text(
-            'NANTI',
+            'LEWATI',
             style: TextStyle(
               color: isDark ? Colors.white70 : Colors.black54,
-              fontWeight:
-                  widget.isRequired ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ),
-        ElevatedButton.icon(
-          onPressed: widget.onUpdate ?? () => _handleDownload(),
-          icon: const Icon(Icons.download_rounded, size: 18),
-          label: const Text(
-            'DOWNLOAD',
-            style: TextStyle(
-              fontSize: 15,
               fontWeight: FontWeight.bold,
             ),
           ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: widget.isRequired ? Colors.blue : Colors.blue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        ),
+        if (widget.updateInfo.updateType == 'minor')
+          ElevatedButton.icon(
+            onPressed: () {
+              if (widget.onUpdate != null) {
+                Navigator.of(context).pop();
+                widget.onUpdate!();
+              } else {
+                _handleDownload();
+              }
+            },
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text(
+              'UNDUH APLIKASI',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isDark ? Colors.blue.shade700 : Colors.blue.shade600,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          )
+        else
+          ElevatedButton.icon(
+            onPressed: () async {
+              final url = Uri.parse("https://wa.me/6285931564236");
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            },
+            icon: const Icon(Icons.chat_bubble, size: 18),
+            label: const Text(
+              'HUBUNGI ADMIN',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF25D366),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
-        ),
       ],
     );
   }

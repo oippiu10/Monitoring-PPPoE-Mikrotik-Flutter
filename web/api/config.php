@@ -13,7 +13,7 @@ if (file_exists(__DIR__ . '/.env')) {
 
 // Database configuration with environment variable support
 // Use 127.0.0.1 instead of localhost to force TCP connection instead of socket
-$host = $_ENV['DB_HOST'] ?? getenv('DB_HOST') ?: '127.0.0.1/phpmyadmin';
+$host = $_ENV['DB_HOST'] ?? getenv('DB_HOST') ?: '127.0.0.1';
 $db   = $_ENV['DB_NAME'] ?? getenv('DB_NAME') ?: 'pppoe_monitor';
 $user = $_ENV['DB_USER'] ?? getenv('DB_USER') ?: 'root';
 $pass = $_ENV['DB_PASS'] ?? getenv('DB_PASS') ?: 'yahahahusein112'; // CHANGE THIS IN PRODUCTION!

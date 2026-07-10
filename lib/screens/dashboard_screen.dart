@@ -515,17 +515,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 });
                               },
                             ),
-                            ListTile(
-                              leading: const Icon(Icons.receipt_long),
-                              title: const Text('Billing'),
-                              onTap: () {
-                                Navigator.of(context).pop();
-                                Future.delayed(
-                                    const Duration(milliseconds: 250), () {
-                                  Navigator.of(context, rootNavigator: true)
-                                      .pushNamed('/billing');
-                                });
-                              },
+                            ExpansionTile(
+                              leading: const Icon(Icons.account_balance_wallet),
+                              title: const Text('Keuangan'),
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.receipt_long),
+                                  title: const Text('Tagihan Bulanan'),
+                                  contentPadding: const EdgeInsets.only(left: 72),
+                                  onTap: () {
+                                    Navigator.of(context).pop();
+                                    Future.delayed(
+                                        const Duration(milliseconds: 250), () {
+                                      Navigator.of(context, rootNavigator: true)
+                                          .pushNamed('/billing');
+                                    });
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.money_off),
+                                  title: const Text('Pengeluaran'),
+                                  contentPadding: const EdgeInsets.only(left: 72),
+                                  onTap: () {
+                                    Navigator.of(context).pop();
+                                    Future.delayed(
+                                        const Duration(milliseconds: 250), () {
+                                      Navigator.of(context, rootNavigator: true)
+                                          .pushNamed('/expense');
+                                    });
+                                  },
+                                ),
+                              ],
                             ),
                             ListTile(
                               leading: const Icon(Icons.cloud),

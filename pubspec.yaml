@@ -16,20 +16,20 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.9+10
+version: 1.0.16+20
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
   intl: ^0.20.2
-  crypto: ^3.0.3
+  crypto: ^3.0.7
   image: ^4.1.3
   provider: ^6.0.5
   http: ^1.1.0
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.5.5
   cupertino_icons: ^1.0.2
   flutter_secure_storage: ^9.2.4
   package_info_plus: ^9.0.0
@@ -37,7 +37,7 @@ dependencies:
   fl_chart: ^1.1.1
   percent_indicator: ^4.2.3
   flutter_markdown: ^0.7.7+1
-  url_launcher: ^6.2.4
+  url_launcher: ^6.3.2
   flutter_contacts: ^1.1.9
   image_picker: ^1.0.7
   sqflite: ^2.3.0
@@ -46,7 +46,7 @@ dependencies:
   csv: ^6.0.0
   permission_handler: ^12.0.1
   app_settings: ^6.1.1
-  device_info_plus: ^12.1.0
+  device_info_plus: ^12.4.0
   month_picker_dialog: ^6.5.0
   pdf: ^3.10.7
   printing: ^5.12.0
@@ -72,7 +72,8 @@ dev_dependencies:
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
-  flutter_lints: ^3.0.0
+  # rules and activating additional ones.
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
