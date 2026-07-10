@@ -1,0 +1,327 @@
+import {
+  LayoutDashboard,
+  Monitor,
+  ListTodo,
+  Settings,
+  Users,
+  UserCheck,
+  Command,
+  Network,
+  Share2,
+  Wallet,
+  Receipt,
+  AlertTriangle,
+  BarChart3,
+  Wifi,
+  ArrowDownCircle,
+  WifiOff,
+  KeyRound,
+  Shield,
+  LayoutGrid,
+  Gauge,
+  List,
+  Server,
+  FileUp,
+  RadioTower,
+  Bot,
+  LifeBuoy,
+  Package,
+  Ticket,
+  FileText,
+  DatabaseBackup,
+  MessageSquare,
+  Palette,
+  Calculator,
+} from 'lucide-react'
+import { type SidebarData } from '../types'
+import packageJson from '../../../../package.json'
+
+export const sidebarData: SidebarData = {
+  user: {
+    name: 'Admin MikroTik',
+    email: 'admin@mikrotik.local',
+    avatar: '/avatars/shadcn.jpg',
+  },
+  teams: [
+    {
+      name: 'MikroTik Monitor',
+      logo: Command,
+      plan: `v${packageJson.version}`,
+    },
+  ],
+  navGroups: [
+    {
+      title: 'Monitoring',
+      items: [
+        {
+          title: 'Dashboard',
+          url: '/',
+          icon: LayoutDashboard,
+        },
+        {
+          title: 'Live Monitor',
+          url: '/monitoring',
+          icon: Monitor,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator', 'viewer'],
+        },
+        {
+          title: 'Network Map',
+          url: '/network-map',
+          icon: Network,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+        },
+        {
+          title: 'Pelanggan',
+          icon: Users,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator', 'viewer'],
+          items: [
+            {
+              title: 'Overview Pelanggan',
+              url: '/customers/overview',
+              icon: Gauge,
+            },
+            {
+              title: 'Semua Pelanggan',
+              url: '/customers',
+              icon: List,
+            },
+            {
+              title: 'Per Profil',
+              url: '/customers/by-profile',
+              icon: UserCheck,
+            },
+            {
+              title: 'Import / Export',
+              url: '/customers/import-export',
+              icon: FileUp,
+              requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+            },
+          ],
+        },
+        {
+          title: 'PPPoE',
+          icon: Network,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator', 'viewer'],
+          items: [
+            {
+              title: 'Overview',
+              url: '/pppoe',
+              icon: LayoutGrid,
+            },
+            {
+              title: 'Active',
+              url: '/pppoe/active',
+              icon: Wifi,
+            },
+            {
+              title: 'Offline',
+              url: '/pppoe/offline',
+              icon: WifiOff,
+            },
+            {
+              title: 'Secrets',
+              url: '/pppoe/secrets',
+              icon: KeyRound,
+              requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+            },
+            {
+              title: 'Profiles',
+              url: '/pppoe/profiles',
+              icon: Shield,
+              requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator'],
+            },
+          ],
+        },
+        {
+          title: 'Infrastruktur',
+          icon: Share2,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+          items: [
+            {
+              title: 'Overview',
+              url: '/odp/capacity',
+              icon: Gauge,
+            },
+            {
+              title: 'Daftar ODP',
+              url: '/odp',
+              icon: Share2,
+            },
+            {
+              title: 'Daftar ODC',
+              url: '/odp/odc',
+              icon: Server,
+            },
+            {
+              title: 'Warna Kabel',
+              url: '/odp/cable-colors',
+              icon: Palette,
+            },
+            {
+              title: 'Kalkulator Rasio',
+              url: '/odp/ratio-calculator',
+              icon: Calculator,
+            },
+          ],
+        },
+        {
+          title: 'OLT',
+          url: '/olt',
+          icon: RadioTower,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator', 'viewer'],
+        },
+        {
+          title: 'ACS / TR-069',
+          icon: Bot,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+          items: [
+            {
+              title: 'Overview ACS',
+              url: '/acs',
+              icon: Bot,
+            },
+            {
+              title: 'GenieACS Devices',
+              url: '/genieacs',
+              icon: Monitor,
+            },
+            {
+              title: 'GenieACS Settings',
+              url: '/genieacs/settings',
+              icon: Settings,
+            },
+          ],
+        },
+        {
+          title: 'Hotspot / Voucher',
+          url: '/hotspot',
+          icon: Ticket,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+        },
+      ],
+    },
+    {
+      title: 'Administrasi',
+      items: [
+        {
+          title: 'Keuangan',
+          icon: Wallet,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'finance'],
+          items: [
+            {
+              title: 'Dashboard Keuangan',
+              url: '/finance',
+              icon: Wallet,
+            },
+            {
+              title: 'Tagihan Bulanan',
+              url: '/finance/billing',
+              icon: Receipt,
+            },
+            {
+              title: 'Piutang',
+              url: '/finance/receivable',
+              icon: AlertTriangle,
+            },
+            {
+              title: 'Pengeluaran',
+              url: '/finance/expenses',
+              icon: ArrowDownCircle,
+            },
+          ],
+        },
+
+        {
+          title: 'Automation',
+          icon: Bot,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator'],
+          items: [
+            {
+              title: 'Automation Center',
+              url: '/automation',
+              icon: Bot,
+            },
+            {
+              title: 'WhatsApp Center',
+              url: '/automation/whatsapp-center',
+              icon: MessageSquare,
+            },
+          ],
+        },
+        {
+          title: 'Helpdesk / Ticketing',
+          url: '/tickets',
+          icon: LifeBuoy,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+        },
+        {
+          title: 'Inventory / Asset',
+          url: '/inventory',
+          icon: Package,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator', 'operator'],
+        },
+
+        {
+          title: 'Log Aktivitas',
+          url: '/logs',
+          icon: ListTodo,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator'],
+        },
+        {
+          title: 'Manajemen Klien (SaaS)',
+          url: '/tenants',
+          icon: Server,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator'],
+        },
+      ],
+    },
+    {
+      title: 'Sistem',
+      items: [
+        {
+          title: 'Settings',
+          icon: Settings,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator'],
+          items: [
+            {
+              title: 'Routers',
+              url: '/settings/routers',
+            },
+            {
+              title: 'Admin Users',
+              url: '/settings/admins',
+              requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator'],
+            },
+            {
+              title: 'Account',
+              url: '/settings/account',
+            },
+            {
+              title: 'Appearance',
+              url: '/settings/appearance',
+            },
+          ],
+        },
+        {
+          title: 'System Tools',
+          icon: DatabaseBackup,
+          requiredRoles: ['admin', 'administrator', 'super_admin', 'super admin', 'superadministrator'],
+          items: [
+            {
+              title: 'Database Backup',
+              url: '/system-tools',
+            },
+            {
+              title: 'System Logs',
+              url: '/system-tools/logs',
+            },
+            {
+              title: 'System Update',
+              url: '/system-tools/update',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}

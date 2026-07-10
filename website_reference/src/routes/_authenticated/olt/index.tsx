@@ -1,0 +1,174 @@
+import { useState } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Network, Plus, RadioTower, Trash2, Wifi, WifiOff, RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@/lib/api'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { RouterSelector } from '@/components/router-selector'
+import { ProfileDropdown } from '@/components/profile-dropdown'
+import { ThemeSwitch } from '@/components/theme-switch'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+
+export const Route = createFileRoute('/_authenticated/olt/')({ component: OltCenter })
+
+function OltCenter() {
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [walkResult, setWalkResult] = useState<any>(null)
+  const [probeResult, setProbeResult] = useState<any>(null)
+  const [interfaceResult, setInterfaceResult] = useState<any>(null)
+  const [interfaceFilter, setInterfaceFilter] = useState('')
+  const [interfaceOnlyOffline, setInterfaceOnlyOffline] = useState(false)
+  const [onuResult, setOnuResult] = useState<any>(null)
+  const [onuImportOpen, setOnuImportOpen] = useState(false)
+  const [onuImportOltId, setOnuImportOltId] = useState<number | null>(null)
+  const [onuImportText, setOnuImportText] = useState('')
+  const [onuFilter, setOnuFilter] = useState('')
+  const [form, setForm] = useState({ name: '', brand: 'Generic', host: '', port: '23', protocol: 'snmp', snmp_community: 'public', pon_ports: '0', total_onu: '0', online_onu: '0', status: 'unknown', location: '', note: '' })
+  const { data, isLoading } = useQuery({ queryKey: ['olts'], queryFn: async () => (await api.get('/olt_operations.php', { params: { action: 'list' } })).data })
+  const add = useMutation({ mutationFn: async () => {
+    const test = (await api.post('/olt_operations.php?action=test_connection', { host: form.host, port: form.port, protocol: form.protocol })).data
+    if (!test.success) throw new Error(test.message || 'Ping test gagal')
+    if (!test.online && !confirm(`Ping test gagal/offline. Pesan: ${test.message}\n\nTetap simpan OLT?`)) return { success: false, cancelled: true }
+    const payload = { ...form, status: test.status || 'unknown' }
+    return (await api.post('/olt_operations.php?action=add', payload)).data
+  }, onSuccess: (d) => { if (d.cancelled) return; d.success ? toast.success('OLT ditambahkan') : toast.error(d.message || 'Gagal'); setOpen(false); queryClient.invalidateQueries({ queryKey: ['olts'] }) }, onError: (e: any) => toast.error(e?.message || 'Gagal test koneksi') })
+  const updateStatus = useMutation({ mutationFn: async ({ id, status }: any) => (await api.post('/olt_operations.php?action=update_status', { id, status })).data, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['olts'] }) })
+  const del = useMutation({ mutationFn: async (id: number) => (await api.post('/olt_operations.php?action=delete', { id })).data, onSuccess: (d) => { d.success ? toast.success('OLT dihapus') : toast.error(d.message || 'Gagal'); queryClient.invalidateQueries({ queryKey: ['olts'] }) } })
+  const checkStatus = useMutation({ mutationFn: async (id: number) => (await api.post('/olt_operations.php?action=check_status', { id })).data, onSuccess: (d) => { d.success ? toast.success(`OLT ${d.status} (${d.response_ms}ms)`) : toast.error(d.message || 'Gagal check OLT'); queryClient.invalidateQueries({ queryKey: ['olts'] }) } })
+  const snmpBasic = useMutation({ mutationFn: async (id: number) => (await api.post('/olt_operations.php?action=snmp_basic', { id })).data, onSuccess: (d) => { d.success ? toast.success(`SNMP OK: ${d.sys_name || 'OLT'}`) : toast.error(d.message || 'SNMP gagal'); queryClient.invalidateQueries({ queryKey: ['olts'] }) } })
+  const updateSnmp = useMutation({ mutationFn: async ({ id, snmp_community }: any) => (await api.post('/olt_operations.php?action=update_snmp', { id, snmp_community })).data, onSuccess: (d) => { d.success ? toast.success('SNMP community disimpan') : toast.error(d.message || 'Gagal simpan SNMP'); queryClient.invalidateQueries({ queryKey: ['olts'] }) } })
+  const snmpWalk = useMutation({ mutationFn: async ({ id, oid }: any) => (await api.post('/olt_operations.php?action=snmp_walk', { id, oid, limit: 80 })).data, onSuccess: (d) => { d.success ? (setWalkResult(d), toast.success(`Walk OK: ${d.count} data`)) : toast.error(d.message || 'SNMP walk gagal') } })
+  const snmpProbe = useMutation({ mutationFn: async ({ id, group = 'fast' }: any) => (await api.post('/olt_operations.php?action=snmp_probe', { id, group })).data, onSuccess: (d) => { d.success ? (setProbeResult(d), toast.success(`Probe selesai: ${d.hits} reply`)) : toast.error(d.message || 'SNMP probe gagal') }, onError: (e: any) => toast.error(`SNMP probe gagal: ${e?.response?.status || ''} ${e?.response?.data?.message || e?.message || 'timeout'}`) })
+  const snmpInterfaces = useMutation({ mutationFn: async (id: number) => (await api.post('/olt_operations.php?action=snmp_interfaces', { id })).data, onSuccess: (d) => { d.success ? (setInterfaceResult(d), toast.success(`Interface: ${d.online}/${d.count} online`)) : toast.error(d.message || 'Interface gagal') }, onError: (e: any) => toast.error(e?.message || 'Interface gagal') })
+  const onuList = useMutation({ mutationFn: async (id: number) => (await api.post('/olt_operations.php?action=onu_list', { id })).data, onSuccess: (d) => { d.success ? (setOnuResult(d), toast.success(`ONU table: ${d.online}/${d.count} online`)) : toast.error(d.message || 'ONU list gagal') } })
+  const onuImport = useMutation({ mutationFn: async () => (await api.post('/olt_operations.php?action=onu_import_text', { id: onuImportOltId, text: onuImportText })).data, onSuccess: (d) => { if (d.success) { setOnuResult(d); setOnuImportOpen(false); setOnuImportText(''); toast.success(`Import ONU: ${d.online}/${d.count} online`); queryClient.invalidateQueries({ queryKey: ['olts'] }) } else toast.error(d.message || 'Import gagal') } })
+  const olts = data?.data || []
+  const s = data?.summary || {}
+  const interfaceRows = interfaceResult?.data || []
+  const filteredOnuRows = (onuResult?.data || []).filter((r: any) => !onuFilter.trim() || `${r.onu_id} ${r.name} ${r.mac} ${r.status} ${r.last_deregister_reason} ${r.receive_power}`.toLowerCase().includes(onuFilter.trim().toLowerCase()))
+  const filteredInterfaceRows = interfaceRows.filter((r: any) => {
+    const q = interfaceFilter.trim().toLowerCase()
+    const match = !q || `${r.name} ${r.kind} ${r.index}`.toLowerCase().includes(q)
+    return match && (!interfaceOnlyOffline || !r.online)
+  })
+
+  const statusBadge = (st: string) => st === 'online' ? 'default' : st === 'offline' ? 'destructive' : 'secondary'
+
+  return <>
+    <Header fixed><div className='me-auto flex items-center gap-2'><div className='rounded-lg bg-primary/10 p-2'><Network className='h-5 w-5 text-primary' /></div><h1 className='text-lg font-bold'>OLT Center</h1></div><RouterSelector /><ThemeSwitch /><ProfileDropdown /></Header>
+    <Main className='space-y-4' fluid>
+      <div className='flex items-center justify-between gap-3'><div><h2 className='text-2xl font-bold tracking-tight'>OLT Monitoring & Provisioning</h2><p className='text-muted-foreground'>Inventory OLT, kapasitas PON/ONU, status perangkat, dan pondasi integrasi SNMP/Telnet vendor.</p></div><Button onClick={() => setOpen(true)}><Plus className='mr-2 h-4 w-4' /> Tambah OLT</Button></div>
+      <div className='grid gap-3 md:grid-cols-4'>
+        <Card><CardContent className='flex items-center gap-3 py-4'><RadioTower className='h-8 w-8 text-blue-500' /><div><p className='text-xs font-bold uppercase text-muted-foreground'>Total OLT</p><p className='text-2xl font-black'>{s.total || 0}</p></div></CardContent></Card>
+        <Card><CardContent className='flex items-center gap-3 py-4'><Wifi className='h-8 w-8 text-green-500' /><div><p className='text-xs font-bold uppercase text-muted-foreground'>Online OLT</p><p className='text-2xl font-black'>{s.online || 0}</p></div></CardContent></Card>
+        <Card><CardContent className='flex items-center gap-3 py-4'><WifiOff className='h-8 w-8 text-red-500' /><div><p className='text-xs font-bold uppercase text-muted-foreground'>Offline OLT</p><p className='text-2xl font-black'>{s.offline || 0}</p></div></CardContent></Card>
+        <Card><CardContent className='flex items-center gap-3 py-4'><Network className='h-8 w-8 text-purple-500' /><div><p className='text-xs font-bold uppercase text-muted-foreground'>ONU Online</p><p className='text-2xl font-black'>{s.onu_online || 0}/{s.onu_total || 0}</p></div></CardContent></Card>
+      </div>
+      <Card className='border-dashed bg-muted/20'><CardContent className='flex flex-col gap-2 py-4 md:flex-row md:items-center md:justify-between'><div><p className='font-bold'>Mode aman aktif</p><p className='text-sm text-muted-foreground'>Monitoring OLT memakai SNMP read-only. Provisioning, reboot, delete ONU, dan SNMP write belum diaktifkan agar tidak mengganggu pelanggan.</p></div><Badge variant='secondary'>Read-only</Badge></CardContent></Card>
+      {walkResult && <Card className='overflow-hidden'>
+        <CardContent className='space-y-3 py-4'>
+          <div className='flex items-center justify-between gap-2'><div><p className='font-bold'>SNMP Walk Result</p><p className='text-xs text-muted-foreground'>OID {walkResult.oid} · {walkResult.count} data · read-only manual</p></div><Button size='sm' variant='outline' onClick={() => setWalkResult(null)}>Tutup</Button></div>
+          <div className='max-h-80 overflow-auto rounded-md border'><Table><TableHeader><TableRow><TableHead>OID</TableHead><TableHead>Value</TableHead></TableRow></TableHeader><TableBody>{walkResult.data?.map((r: any, i: number) => <TableRow key={i}><TableCell className='font-mono text-xs'>{r.oid}</TableCell><TableCell className='font-mono text-xs'>{r.value}</TableCell></TableRow>)}</TableBody></Table></div>
+        </CardContent>
+      </Card>}
+      {probeResult && <Card className='overflow-hidden'>
+        <CardContent className='space-y-3 py-4'>
+          <div className='flex items-center justify-between gap-2'><div><p className='font-bold'>SNMP OID Probe Result</p><p className='text-xs text-muted-foreground'>{probeResult.hits} reply dari {probeResult.count} candidate · group {probeResult.group || 'fast'} · read-only manual</p></div><Button size='sm' variant='outline' onClick={() => setProbeResult(null)}>Tutup</Button></div>
+          <div className='max-h-96 overflow-auto rounded-md border'><Table><TableHeader><TableRow><TableHead>Status</TableHead><TableHead>Label</TableHead><TableHead>OID</TableHead><TableHead>Value</TableHead></TableRow></TableHeader><TableBody>{probeResult.data?.map((r: any, i: number) => <TableRow key={i}><TableCell><Badge variant={r.status === 'reply' ? 'default' : 'secondary'}>{r.status}</Badge></TableCell><TableCell className='text-xs'>{r.label}</TableCell><TableCell className='font-mono text-xs'>{r.oid}</TableCell><TableCell className='font-mono text-xs'>{r.value || '-'}</TableCell></TableRow>)}</TableBody></Table></div>
+        </CardContent>
+      </Card>}
+      {onuResult && onuResult.count > 0 && <Card className='overflow-hidden'>
+        <CardContent className='space-y-3 py-4'>
+          <div className='flex items-center justify-between gap-2'><div><p className='font-bold'>HSGQ ONU Table</p><p className='text-xs text-muted-foreground'>{onuResult.online}/{onuResult.count} ONU online · hasil import/web table · optical power & reason</p></div><Button size='sm' variant='outline' onClick={() => setOnuResult(null)}>Tutup</Button></div>
+          <div className='grid gap-2 md:grid-cols-4'><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>ONU Online</p><p className='text-xl font-black'>{onuResult.online}/{onuResult.count}</p></CardContent></Card><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>Offline</p><p className='text-xl font-black text-red-600'>{onuResult.offline}</p></CardContent></Card><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>LOS/Laser</p><p className='text-xl font-black'>{(onuResult.data || []).filter((r: any) => /laser|los/i.test(r.last_deregister_reason || '')).length}</p></CardContent></Card><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>Redaman ≥ -25</p><p className='text-xl font-black'>{(onuResult.data || []).filter((r: any) => parseFloat(r.receive_power) <= -25).length}</p></CardContent></Card></div>
+          <Input className='md:w-96' placeholder='Cari ONU: nama, MAC, 1/14, offline, dying gasp, -25...' value={onuFilter} onChange={(e) => setOnuFilter(e.target.value)} />
+          <div className='max-h-[650px] overflow-auto rounded-md border'><Table><TableHeader><TableRow><TableHead>ONU ID</TableHead><TableHead>Name</TableHead><TableHead>MAC</TableHead><TableHead>Status</TableHead><TableHead>Auth</TableHead><TableHead>Register</TableHead><TableHead>Last Down</TableHead><TableHead>Reason</TableHead><TableHead>Type</TableHead><TableHead>RTT</TableHead><TableHead>RX Power</TableHead></TableRow></TableHeader><TableBody>{filteredOnuRows.map((r: any, i: number) => <TableRow key={`${r.onu_id}-${i}`}><TableCell className='font-mono text-xs'>{r.onu_id}</TableCell><TableCell className='font-mono text-xs'>{r.name}</TableCell><TableCell className='font-mono text-xs'>{r.mac}</TableCell><TableCell><Badge variant={(r.status || '').toLowerCase() === 'online' ? 'default' : 'destructive'}>{r.status || '-'}</Badge></TableCell><TableCell>{r.auth_state}</TableCell><TableCell className='text-xs'>{r.register_time}</TableCell><TableCell className='text-xs'>{r.last_deregister_time}</TableCell><TableCell><Badge variant={/laser|los/i.test(r.last_deregister_reason || '') ? 'destructive' : 'secondary'}>{r.last_deregister_reason || '-'}</Badge></TableCell><TableCell>{r.device_type} {r.onu_type}</TableCell><TableCell>{r.round_trip_time}</TableCell><TableCell className={parseFloat(r.receive_power) <= -25 ? 'font-bold text-red-600' : ''}>{r.receive_power}</TableCell></TableRow>)}</TableBody></Table></div>
+        </CardContent>
+      </Card>}
+      {interfaceResult && <Card className='overflow-hidden'>
+        <CardContent className='space-y-3 py-4'>
+          <div className='flex items-center justify-between gap-2'><div><p className='font-bold'>OLT Interface Monitor</p><p className='text-xs text-muted-foreground'>{interfaceResult.online}/{interfaceResult.count} interface online · customer {interfaceResult.customer_online}/{interfaceResult.customer_total} · GE {interfaceResult.ge_online}/{interfaceResult.ge_total} · read-only SNMP</p></div><Button size='sm' variant='outline' onClick={() => setInterfaceResult(null)}>Tutup</Button></div>
+          <div className='grid gap-2 md:grid-cols-4'><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>Customer Online</p><p className='text-xl font-black'>{interfaceResult.customer_online}/{interfaceResult.customer_total}</p></CardContent></Card><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>GE Online</p><p className='text-xl font-black'>{interfaceResult.ge_online}/{interfaceResult.ge_total}</p></CardContent></Card><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>PON/ONU Port</p><p className='text-xl font-black'>{interfaceResult.pon_total || 0}</p></CardContent></Card><Card><CardContent className='py-3'><p className='text-xs text-muted-foreground'>Offline</p><p className='text-xl font-black text-red-600'>{interfaceResult.offline}</p></CardContent></Card></div>
+          {interfaceResult.data?.some((r: any) => !r.online) && <div className='rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800'><b>Offline terdeteksi:</b> {interfaceResult.data.filter((r: any) => !r.online).map((r: any) => r.name).join(', ')}</div>}
+          <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'><Input className='md:w-80' placeholder='Cari ONU/nama/index: pck@, kdgm@, 1/14...' value={interfaceFilter} onChange={(e) => setInterfaceFilter(e.target.value)} /><Button size='sm' variant={interfaceOnlyOffline ? 'destructive' : 'outline'} onClick={() => setInterfaceOnlyOffline(!interfaceOnlyOffline)}>{interfaceOnlyOffline ? 'Tampilkan Semua' : 'Offline Saja'}</Button></div>
+          <div className='max-h-[650px] overflow-auto rounded-md border'><Table><TableHeader><TableRow><TableHead>Index</TableHead><TableHead>Nama</TableHead><TableHead>Jenis</TableHead><TableHead>Admin</TableHead><TableHead>Oper</TableHead><TableHead>Speed</TableHead></TableRow></TableHeader><TableBody>{filteredInterfaceRows.map((r: any) => <TableRow key={r.index}><TableCell>{r.index}</TableCell><TableCell className='font-mono text-xs'>{r.name}</TableCell><TableCell><Badge variant={r.kind === 'ONU/Customer logical' ? 'default' : 'secondary'}>{r.kind}</Badge></TableCell><TableCell>{r.admin_status}</TableCell><TableCell><Badge variant={r.online ? 'default' : 'destructive'}>{r.online ? 'online' : 'offline'}</Badge></TableCell><TableCell>{r.speed}</TableCell></TableRow>)}</TableBody></Table></div>
+        </CardContent>
+      </Card>}
+      <Card className='overflow-hidden'><Table><TableHeader><TableRow><TableHead>OLT</TableHead><TableHead>Host</TableHead><TableHead>Protocol</TableHead><TableHead>PON</TableHead><TableHead>ONU</TableHead><TableHead>Status</TableHead><TableHead>Lokasi</TableHead><TableHead>Last Check</TableHead><TableHead className='text-right'>Aksi</TableHead></TableRow></TableHeader><TableBody>
+        {isLoading ? <TableRow><TableCell colSpan={9} className='py-10 text-center text-muted-foreground'>Memuat...</TableCell></TableRow> : olts.length === 0 ? <TableRow><TableCell colSpan={9} className='py-10 text-center text-muted-foreground'>Belum ada OLT</TableCell></TableRow> : olts.map((o: any) => <TableRow key={o.id}><TableCell><b>{o.name}</b><p className='text-xs text-muted-foreground'>{o.brand}</p></TableCell><TableCell className='font-mono text-xs'>{o.host}:{o.port}</TableCell><TableCell><p>{o.protocol}</p><Input className='mt-1 h-7 w-36 text-xs' defaultValue={o.snmp_community || 'public-read'} onBlur={(e) => e.target.value !== o.snmp_community && updateSnmp.mutate({ id: o.id, snmp_community: e.target.value })} /></TableCell><TableCell>{o.pon_ports}</TableCell><TableCell>{o.online_onu}/{o.total_onu}</TableCell><TableCell><Select value={o.status} onValueChange={(status) => updateStatus.mutate({ id: o.id, status })}><SelectTrigger className='h-8 w-32'><SelectValue /></SelectTrigger><SelectContent><SelectItem value='unknown'>unknown</SelectItem><SelectItem value='online'>online</SelectItem><SelectItem value='offline'>offline</SelectItem><SelectItem value='maintenance'>maintenance</SelectItem></SelectContent></Select><Badge className='mt-1' variant={statusBadge(o.status) as any}>{o.status}</Badge></TableCell><TableCell>{o.location || '-'}</TableCell><TableCell><p className='text-xs'>{o.last_checked_at || '-'}</p><p className='text-xs text-muted-foreground'>{o.response_ms ? `${o.response_ms}ms` : ''} {o.last_check_message || ''}</p>{o.sys_name && <p className='mt-1 text-xs font-semibold'>SNMP: {o.sys_name}</p>}</TableCell><TableCell className='text-right'><div className='flex flex-wrap justify-end gap-1'><Button size='sm' onClick={() => snmpInterfaces.mutate(Number(o.id))} disabled={snmpInterfaces.isPending}>{snmpInterfaces.isPending ? 'Monitoring...' : 'Monitor IF'}</Button><Button size='sm' variant='outline' onClick={() => snmpBasic.mutate(Number(o.id))} disabled={snmpBasic.isPending}>SNMP Basic</Button><Button size='icon' variant='outline' onClick={() => checkStatus.mutate(Number(o.id))} disabled={checkStatus.isPending} title='Ping/Status'><RefreshCw className='h-4 w-4' /></Button><Button size='sm' variant='secondary' onClick={() => onuList.mutate(Number(o.id))}>ONU Detail</Button><Button size='sm' variant='ghost' onClick={() => snmpWalk.mutate({ id: Number(o.id), oid: '1.3.6.1.2.1.1' })} disabled={snmpWalk.isPending}>Debug Walk</Button><Button size='sm' variant='ghost' onClick={() => snmpProbe.mutate({ id: Number(o.id), group: 'fast' })} disabled={snmpProbe.isPending}>{snmpProbe.isPending ? 'Probe...' : 'Probe'}</Button><Button size='icon' variant='ghost' onClick={() => confirm('Hapus OLT?') && del.mutate(Number(o.id))}><Trash2 className='h-4 w-4 text-red-500' /></Button></div></TableCell></TableRow>)}
+      </TableBody></Table></Card>
+    </Main>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className='max-w-md'>
+        <DialogHeader><DialogTitle>Tambah OLT</DialogTitle></DialogHeader>
+        <div className='grid gap-3 py-2'>
+          <div>
+            <label className='text-xs font-bold uppercase text-muted-foreground'>Nama</label>
+            <Input className='mt-1' placeholder='Contoh: OLT POP 1' value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div>
+            <label className='text-xs font-bold uppercase text-muted-foreground'>IP / Host</label>
+            <Input className='mt-1' placeholder='192.168.10.2' value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
+          </div>
+          <div>
+            <label className='text-xs font-bold uppercase text-muted-foreground'>Port</label>
+            <Input className='mt-1' placeholder='23 / 22 / 80 / 443 / 161' value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} />
+          </div>
+          <div>
+            <label className='text-xs font-bold uppercase text-muted-foreground'>SNMP Community</label>
+            <Input className='mt-1' placeholder='public' value={form.snmp_community} onChange={(e) => setForm({ ...form, snmp_community: e.target.value })} />
+          </div>
+          <div>
+            <label className='text-xs font-bold uppercase text-muted-foreground'>Type OLT</label>
+            <Select value={form.brand} onValueChange={(brand) => setForm({ ...form, brand })}>
+              <SelectTrigger className='mt-1'><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value='Generic'>Generic / Unknown</SelectItem>
+                <SelectItem value='Huawei MA5600/MA5608/MA5680'>Huawei MA5600/MA5608/MA5680</SelectItem>
+                <SelectItem value='Huawei MA5800'>Huawei MA5800</SelectItem>
+                <SelectItem value='ZTE C300/C320'>ZTE C300/C320</SelectItem>
+                <SelectItem value='ZTE C600/C650'>ZTE C600/C650</SelectItem>
+                <SelectItem value='Fiberhome AN5516'>Fiberhome AN5516</SelectItem>
+                <SelectItem value='Fiberhome AN6000'>Fiberhome AN6000</SelectItem>
+                <SelectItem value='VSOL V1600'>VSOL V1600 Series</SelectItem>
+                <SelectItem value='VSOL V2800'>VSOL V2800 Series</SelectItem>
+                <SelectItem value='BDCOM GP3600'>BDCOM GP3600 Series</SelectItem>
+                <SelectItem value='BDCOM GP1700'>BDCOM GP1700 Series</SelectItem>
+                <SelectItem value='C-Data FD1600'>C-Data FD1600 Series</SelectItem>
+                <SelectItem value='C-Data FD8000'>C-Data FD8000 Series</SelectItem>
+                <SelectItem value='HSGQ'>HSGQ</SelectItem>
+                <SelectItem value='HSGQ G-series'>HSGQ G-Series</SelectItem>
+                <SelectItem value='HSGQ XPON'>HSGQ XPON OLT</SelectItem>
+                <SelectItem value='Raisecom'>Raisecom</SelectItem>
+                <SelectItem value='Dasan/Zhone'>Dasan / Zhone</SelectItem>
+                <SelectItem value='Nokia/Alcatel ISAM'>Nokia / Alcatel ISAM</SelectItem>
+                <SelectItem value='MikroTik GPEN'>MikroTik GPEN</SelectItem>
+                <SelectItem value='TP-Link OLT'>TP-Link OLT</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter><Button variant='outline' onClick={() => setOpen(false)}>Batal</Button><Button onClick={() => add.mutate()} disabled={add.isPending}>{add.isPending ? 'Ping test...' : 'Simpan'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={onuImportOpen} onOpenChange={setOnuImportOpen}>
+      <DialogContent className='max-w-3xl'>
+        <DialogHeader><DialogTitle>Import HSGQ ONU Table</DialogTitle></DialogHeader>
+        <div className='space-y-3 py-2'>
+          <p className='text-sm text-muted-foreground'>Paste tabel ONU dari web HSGQ mulai baris ONU ID. Data akan disimpan read-only: MAC, status, register time, reason, type, RTT, RX power.</p>
+          <textarea className='min-h-80 w-full rounded-md border bg-background p-3 font-mono text-xs' placeholder={'1/1 pck@inul 94:bf:80:11:2c:b7 Online true 2026/04/30 02:13:00 2026/04/30 01:15:11 Dying gasp HGU 1ge3fe 268 -16.7985 dBm'} value={onuImportText} onChange={(e) => setOnuImportText(e.target.value)} />
+        </div>
+        <DialogFooter><Button variant='outline' onClick={() => setOnuImportOpen(false)}>Batal</Button><Button onClick={() => onuImport.mutate()} disabled={onuImport.isPending}>{onuImport.isPending ? 'Import...' : 'Import ONU'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>
+}

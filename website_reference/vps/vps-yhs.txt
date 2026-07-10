@@ -1,0 +1,42 @@
+=========================================
+🔥 HOSTING / VPS PERTAMA (YHS) 🔥
+=========================================
+ip          : 13.88.220.161:22
+username    : yhs
+password    : yahahahusein112!
+domain      : billing.marzuqnetwork.online  
+directory   : /www/wwwroot/billing.marzuqnetwork.online
+directory API mobile flutter : /www/wwwroot/billing.marzuqnetwork.online/api2
+directory API website : /www/wwwroot/billing.marzuqnetwork.online/api
+
+--- DATABASE LOCAL ---
+url     : localhost/phpmyadmin
+user    : root
+pass    : yahahahusein112
+
+--- DATABASE VPS 1 ---
+ip      : phpmyadmin.marzuqnetwork.online
+user    : root
+pass    : yahahahusein112
+database : pppoe_monitor
+
+
+=========================================
+🚀 HOSTING / VPS KEDUA 🚀
+=========================================
+ip          : 10.5.6.2:22
+username    : root
+password    : ilman271196
+domain      : web.cmmnetwork.online
+directory   : /www/wwwroot/web.cmmnetwork.online
+directory API mobile flutter : /www/wwwroot/cmmnetwork.online/api
+directory API website : /www/wwwroot/web.cmmnetwork.online/api
+
+
+--- DATABASE VPS 2 ---
+ip      : pma.cmmnetwork.online
+user    : root
+pass    : yahahahusein112
+database : pppoe_monitor
+
+

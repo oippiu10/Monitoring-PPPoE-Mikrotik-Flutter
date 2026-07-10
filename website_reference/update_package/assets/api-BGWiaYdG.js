@@ -1,0 +1,1 @@
+import{dt as e}from"./index-BtVsGsbP.js";var t=e.create({baseURL:`/api`,withCredentials:!0,headers:{"Content-Type":`application/json`}});t.interceptors.response.use(e=>e,e=>Promise.reject(e));export{t};

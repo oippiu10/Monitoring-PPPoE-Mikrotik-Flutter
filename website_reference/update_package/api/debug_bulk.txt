@@ -1,0 +1,21 @@
+{
+    "action": "bulk_mark_paid",
+    "router_id": "03FK-Q7XE",
+    "month": 6,
+    "year": 2026,
+    "paid_date": "2026-06-14",
+    "method": "cash",
+    "note": "",
+    "users": [
+        {
+            "user_id": 2161,
+            "username": "jmbn@khikmah",
+            "amount": 150000
+        },
+        {
+            "user_id": 29099,
+            "username": "kdgm@darul",
+            "amount": 150000
+        }
+    ]
+}
