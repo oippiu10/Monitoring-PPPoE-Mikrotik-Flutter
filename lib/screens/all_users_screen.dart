@@ -43,6 +43,18 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
 
   bool _processedArgs = false;
 
+  // Cache hasil filter + sort.
+  // build() memanggil _getFilteredUsersByPPP dua kali (daftar & footer "Total
+  // User"), dan tiap panggilan menyaring lalu mengurutkan ribuan user. Tanpa
+  // cache, satu kali buka halaman bisa menjalankannya puluhan kali dengan hasil
+  // yang sama persis. _dataRevision dinaikkan setiap data berubah — termasuk
+  // saat _users diubah di tempat — supaya cache tidak pernah basi.
+  int _dataRevision = 0;
+  List<Map<String, dynamic>>? _filteredCache;
+  int? _cacheRevision;
+  String? _cacheQuery;
+  String? _cacheSort;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -90,6 +102,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
         if (mounted) {
           setState(() {
             _pppSecrets = provider.pppSecrets;
+            _dataRevision++;
           });
         }
         return;
@@ -101,6 +114,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
       if (mounted) {
         setState(() {
           _pppSecrets = provider.pppSecrets;
+          _dataRevision++;
         });
       }
     } catch (e) {
@@ -109,6 +123,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
       if (mounted) {
         setState(() {
           _pppSecrets = [];
+          _dataRevision++;
         });
       }
     }
@@ -134,13 +149,15 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
         Provider.of<RouterSessionProvider>(context, listen: false);
     final routerId = routerSession.routerId;
     if (routerId == null ||
+        routerId.isEmpty ||
         routerSession.ip == null ||
         routerSession.port == null ||
         routerSession.username == null ||
         routerSession.password == null) {
       setState(() {
         _isLoading = false;
-        _error = 'Belum login atau gagal ambil router!';
+        _error = 'Router ID tidak ditemukan di sesi ini.\n'
+            'Silakan login ulang ke router.';
       });
       return;
     }
@@ -162,6 +179,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
           setState(() {
             _users = List<Map<String, dynamic>>.from(data['users'] ?? []);
             _totalCount = data['count'] as int? ?? _users.length;
+            _dataRevision++;
             _isLoading = false;
           });
         }
@@ -247,7 +265,16 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
   }
 
   List<Map<String, dynamic>> _getFilteredUsersByPPP(
-      List<Map<String, dynamic>> pppSecrets) {
+      List<Map<String, dynamic>> pppSecrets,
+      {String tag = '?'}) {
+    // Pakai hasil sebelumnya selama data, kata kunci, dan urutan belum berubah
+    if (_filteredCache != null &&
+        _cacheRevision == _dataRevision &&
+        _cacheQuery == _searchQuery &&
+        _cacheSort == _sortOption) {
+      return _filteredCache!;
+    }
+
     // Create a Set of usernames that exist in PPP (for fast lookup)
     final pppUsernames = pppSecrets
         .where((s) => (s['name']?.toString().trim().isNotEmpty ?? false))
@@ -261,11 +288,11 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
     }).toList();
 
     // Debug logging
-    print('[AllUsers] Total from DB: ${_users.length}');
-    print('[AllUsers] Total in PPP: ${pppUsernames.length}');
-    print('[AllUsers] After filtering by PPP: ${users.length}');
+    print('[AllUsers/$tag] Total from DB: ${_users.length}');
+    print('[AllUsers/$tag] Total in PPP: ${pppUsernames.length}');
+    print('[AllUsers/$tag] After filtering by PPP: ${users.length}');
     print(
-        '[AllUsers] Hidden (not in PPP): ${_users.length - users.length} users');
+        '[AllUsers/$tag] Hidden (not in PPP): ${_users.length - users.length} users');
 
     // Apply search filter
     if (_searchQuery.isNotEmpty) {
@@ -378,6 +405,11 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
       }
     });
 
+    _filteredCache = users;
+    _cacheRevision = _dataRevision;
+    _cacheQuery = _searchQuery;
+    _cacheSort = _sortOption;
+
     print('[AllUsers] Final count: ${users.length}');
     return users;
   }
@@ -431,6 +463,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
         if (mounted) {
           setState(() {
             _users.removeWhere((u) => u['username'] == user['username']);
+            _dataRevision++;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -501,7 +534,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              user['username'] ?? '-',
+                              (user['username'] ?? '-').toString(),
                               style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
@@ -509,7 +542,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                                       isDark ? Colors.white : Colors.black87),
                             ),
                             Text(
-                              user['profile'] ?? '-',
+                              (user['profile'] ?? '-').toString(),
                               style: TextStyle(
                                   color: isDark
                                       ? Colors.grey[400]
@@ -894,7 +927,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
   }
 
   // Tambahkan fungsi _infoRow untuk tampilan modern
-  Widget _infoRow(IconData? icon, String label, String value,
+  Widget _infoRow(IconData? icon, String label, dynamic value,
       {bool isPassword = false,
       bool isWA = false,
       bool isMaps = false,
@@ -902,6 +935,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
       dynamic lat,
       dynamic lng,
       bool lightBackground = false}) {
+    value = value == null ? '-' : value.toString();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final useDark = lightBackground ? false : isDark;
     Widget? leadingIcon;
@@ -1214,7 +1248,8 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
                           child: Builder(
                             builder: (context) {
                               final filteredUsers =
-                                  _getFilteredUsersByPPP(_pppSecrets);
+                                  _getFilteredUsersByPPP(_pppSecrets,
+                                      tag: 'list');
                               return filteredUsers.isEmpty
                                   ? ListView(
                                       physics: const AlwaysScrollableScrollPhysics(),
@@ -1424,7 +1459,8 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
             // Footer jumlah user
             Builder(
               builder: (context) {
-                final filteredUsers = _getFilteredUsersByPPP(_pppSecrets);
+                final filteredUsers =
+                    _getFilteredUsersByPPP(_pppSecrets, tag: 'footer');
                 return Container(
                   padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
                   child: Text(

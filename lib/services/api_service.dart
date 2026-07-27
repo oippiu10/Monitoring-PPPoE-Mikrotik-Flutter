@@ -311,7 +311,9 @@ class ApiService {
   static Future<Map<String, dynamic>> backfillRouterId({
     required String routerId,
     String oldValue = 'DEFAULT-ROUTER',
-    bool includeEmpty = true,
+    // Jangan default true: itu membuat setiap login menyapu semua baris
+    // ber-router_id kosong ke router ini, sekalipun milik router lain.
+    bool includeEmpty = false,
   }) async {
     try {
       final baseUrl = await _getBaseUrl();

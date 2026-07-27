@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'screens/login_screen.dart';
+import 'screens/account_login_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/multi_dashboard_screen.dart';
 import 'screens/secrets_active_screen.dart';
 import 'screens/tambah_screen.dart';
 import 'screens/setting_screen.dart';
@@ -264,11 +265,12 @@ class MyApp extends StatelessWidget {
             ),
             themeMode:
                 themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            home: const LoginScreen(),
+            // Login akun jadi pintu masuk. Kalau server yang dituju belum
+            // punya endpoint mobile_login.php, layar ini otomatis mengalihkan
+            // ke LoginScreen lama — jadi server lain tidak terpengaruh.
+            home: const AccountLoginScreen(),
             routes: {
-              '/dashboard': (context) => const MikrotikScreenWrapper(
-                    child: DashboardScreen(),
-                  ),
+              '/dashboard': (context) => const MultiDashboardScreen(),
               '/secrets-active': (context) => const MikrotikScreenWrapper(
                     child: SecretsActiveScreen(),
                   ),

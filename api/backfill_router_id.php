@@ -33,7 +33,11 @@ if (!is_array($data)) {
 
     // Optional: nilai placeholder lama yang ingin diganti (default: 'DEFAULT-ROUTER' dan kosong)
     $old1 = isset($data['old_value']) ? trim($data['old_value']) : 'DEFAULT-ROUTER';
-    $includeEmpty = isset($data['include_empty']) ? (bool)$data['include_empty'] : true;
+    // Default sengaja false: kalau true, satu panggilan menyapu SEMUA baris
+    // ber-router_id kosong ke router yang kebetulan login saat itu — cara
+    // paling gampang data antar router tertukar. Pemanggil harus meminta
+    // perilaku itu secara eksplisit.
+    $includeEmpty = isset($data['include_empty']) ? (bool)$data['include_empty'] : false;
 
     $conn->begin_transaction();
 
